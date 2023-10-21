@@ -13,14 +13,24 @@ Videos
 ======
 The first video shows the AI before training. Pacman is randomly exploring.
 
+
+https://github.com/Firefade0329/Reinforcement-Learning-Pacman/assets/114788148/3c7b39aa-94f7-41d2-942f-c98d82e7d608
+
+
 The second video shows the AI after training. Pacman is eating dots as fast as possible while keeping awway from the ghosts.
+
+
+https://github.com/Firefade0329/Reinforcement-Learning-Pacman/assets/114788148/c8356845-2e2e-48bd-acde-a40b88940416
+
 
 
 Reinforcement Learning Performance
 =================================
 The first figure shows the total rewards gaied in each game. Pacman can get more rewards as the training process goes. After 18 games, it can mantain a reward between 300 and 400 each game.
+![reward](https://github.com/Firefade0329/Reinforcement-Learning-Pacman/assets/114788148/cfe6faa6-51a1-43b3-b288-99bc3b24876b)
 
 The second figuer shows the rewards gained during a single game. Pacman is cumulating ots reward as quick as possible.
+![step](https://github.com/Firefade0329/Reinforcement-Learning-Pacman/assets/114788148/004e0921-0fbe-4d08-8ab9-d3a9bd66c7a9)
 
 
 How to run
