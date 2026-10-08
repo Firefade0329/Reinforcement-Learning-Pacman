@@ -1,3 +1,8 @@
 results/runs/pilot_*/
 results/runs/smoke_*/
 *.pt.tmp
+results/runs/*/resume.pt
+results/runs/*/resume_replay.npz
+results/runs/*/resume*.tmp*
+results/runs/*/.lock/
+results/runs/*/.lock.stale.*/
