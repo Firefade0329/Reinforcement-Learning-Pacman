@@ -29,3 +29,9 @@
 {"type": "train", "env_steps": 100000, "updates": 23998, "eps": 0.050000000000000044, "score": 96.25, "return": 84.74031250000012, "death": 1.0, "loss": 4.366580486297607}
 {"type": "eval", "env_steps": 100000, "updates": 23998, "val_score": 92.18, "val_death": 1.0, "val_win": 0.0, "minutes": 46.24875293970108}
 {"type": "train", "env_steps": 104000, "updates": 24998, "eps": 0.050000000000000044, "score": 83.12, "return": 71.82680000000006, "death": 1.0, "loss": 4.321447372436523}
+{"type": "train", "env_steps": 108000, "updates": 25998, "eps": 0.050000000000000044, "score": 95.57142857142857, "return": 84.09392857142852, "death": 1.0, "loss": 4.420661449432373}
+{"type": "train", "env_steps": 112000, "updates": 26998, "eps": 0.050000000000000044, "score": 69.6, "return": 58.571749999999994, "death": 1.0, "loss": 4.316378116607666}
+{"type": "train", "env_steps": 116000, "updates": 27998, "eps": 0.050000000000000044, "score": 100.42307692307692, "return": 88.90961538461549, "death": 1.0, "loss": 4.441200256347656}
+{"type": "train", "env_steps": 120000, "updates": 28998, "eps": 0.050000000000000044, "score": 89.84, "return": 78.4116000000002, "death": 1.0, "loss": 4.376711845397949}
+{"type": "eval", "env_steps": 120000, "updates": 28998, "val_score": 94.5, "val_death": 1.0, "val_win": 0.0, "minutes": 56.071604617436726}
+{"type": "eval", "env_steps": 120000, "updates": 28998, "val_score": 94.5, "val_death": 1.0, "val_win": 0.0, "minutes": 56.39023887316386}
