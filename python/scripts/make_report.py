@@ -66,10 +66,10 @@ def table_main(scenario):
 def table_seeds(scenario="standard"):
     lines = ["| config | seed 0 | seed 1 | seed 2 | mean ± std over seeds | val score (selection) |", "|---|---|---|---|---|---|"]
     groups = [(a, L.run_names(a)) for a in L.ARCHS]
-    base = L.best_resnet()
-    if base:
-        for v in ("nodouble", "nodueling", "nstep1"):
-            groups.append((f"{base} -{v}", [f"{base}-{v}_s{s}" for s in L.SEEDS]))
+    base = L.ABLATION_ARCH
+    for v in ("nodouble", "nodueling", "nstep1"):
+        groups.append((f"{base} -{v}", [f"{base}-{v}_s{s}" for s in L.SEEDS]))
+    groups.append((f"{base} raw grid (no distance fields)", [f"{base}raw_s{s}" for s in L.SEEDS]))
     for label, names in groups:
         ps = [L.run_eval(n, scenario) for n in names]
         if any(p is None for p in ps):

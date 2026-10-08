@@ -16,6 +16,7 @@ RUNS = RESULTS / "runs"
 SEEDS = (0, 1, 2)
 ARCHS = ("mlp", "cnn2", "res2", "res4", "res8")
 BASELINES = ("random", "greedy-bfs", "legacy", "safe-heuristic")
+ABLATION_ARCH = "res4"  # algorithm ablations run on this architecture (fixed a priori)
 JAVA_BASE_COMMIT = "5d5efd5"  # repository HEAD before any Python work started
 
 

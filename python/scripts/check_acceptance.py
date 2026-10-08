@@ -73,12 +73,11 @@ def main(run_tests: bool):
 
     # ---- M6 matrix completeness + report freshness ------------------------------------
     need = [n for a in L.ARCHS for n in L.run_names(a)]
-    base_arch = L.best_resnet()
-    if base_arch:
-        need += [f"{base_arch}-{v}_s{s}" for v in ("nodouble", "nodueling", "nstep1") for s in L.SEEDS]
+    base_arch = L.ABLATION_ARCH
+    need += [f"{base_arch}-{v}_s{s}" for v in ("nodouble", "nodueling", "nstep1") for s in L.SEEDS]
     absent = [n for n in need if L.run_eval(n) is None or L.run_eval(n, "hard") is None]
-    add("M6", "MUST", "PASS" if not absent and base_arch else "MISSING",
-        f"{len(need)} runs complete (>=3 seeds per cell)" if not absent and base_arch else f"missing runs: {absent[:6]}{'...' if len(absent) > 6 else ''}")
+    add("M6", "MUST", "PASS" if not absent else "MISSING",
+        f"{len(need)} runs complete (>=3 seeds per cell)" if not absent else f"missing runs: {absent[:6]}{'...' if len(absent) > 6 else ''}")
 
     # ---- M7 Java untouched -------------------------------------------------------------
     r = subprocess.run(["git", "diff", "--stat", L.JAVA_BASE_COMMIT, "--", "ReinforcementLearning", "HumanPlayGame",

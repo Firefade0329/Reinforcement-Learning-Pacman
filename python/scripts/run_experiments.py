@@ -4,7 +4,7 @@
 Resumable: a run whose results/runs/<name>/test_standard.json already exists is skipped.
 
   python scripts/run_experiments.py depth      # arch x seed
-  python scripts/run_experiments.py algo       # ablate Double / Dueling / n-step on the best resN
+  python scripts/run_experiments.py algo       # ablate Double / Dueling / n-step on ResNet-4
   python scripts/run_experiments.py tabular    # tabular Q, 3 seeds
   python scripts/run_experiments.py baselines  # L0-L3 on val+test, standard+hard
 """
@@ -21,6 +21,7 @@ PY = Path(__file__).resolve().parents[1]
 RESULTS = Path(os.environ.get("PACMAN_RESULTS_DIR") or PY.parent / "results")
 SEEDS = (0, 1, 2)
 ARCHS = ("mlp", "cnn2", "res2", "res4", "res8")
+ABLATION_ARCH = "res4"  # fixed a priori (middle depth, affordable); see PLAN.md section 9, deviation 4
 STEPS = 120_000  # env transitions per run; see docs/PLAN.md section 9 for the budget rationale
 
 
@@ -55,27 +56,20 @@ def pool(jobs, workers=4):
 
 
 def depth_jobs():
-    # longest first so the pool stays busy
-    order = ["res8", "res4", "res2", "cnn2", "mlp"]
+    # cheap MLP runs first (quick sanity feedback), then longest-first so the pool stays busy
+    order = ["mlp", "res8", "res4", "res2", "cnn2"]
     return [(f"{a}_s{s}", ["--arch", a, "--seed", s, "--total_env_steps", STEPS])
             for a in order for s in SEEDS]
 
 
-def best_resnet() -> str:
-    best, best_v = None, -1.0
-    for a in ("res2", "res4", "res8"):
-        vals = [json.loads((RESULTS / "runs" / f"{a}_s{s}" / "summary.json").read_text())["best_val_score"] for s in SEEDS]
-        if sum(vals) / len(vals) > best_v:
-            best, best_v = a, sum(vals) / len(vals)
-    return best  # selected on validation scores only
-
-
 def algo_jobs():
-    arch = best_resnet()
-    (RESULTS / "runs" / "algo_base_arch.txt").write_text(arch)
+    arch = ABLATION_ARCH
     variants = {"nodouble": ["--no-double"], "nodueling": ["--no-dueling"], "nstep1": ["--n_step", 1]}
-    return [(f"{arch}-{v}_s{s}", ["--arch", arch, "--seed", s, "--total_env_steps", STEPS, *extra])
+    jobs = [(f"{arch}-{v}_s{s}", ["--arch", arch, "--seed", s, "--total_env_steps", STEPS, *extra])
             for v, extra in variants.items() for s in SEEDS]
+    # input-representation control: same net on the raw 5-plane grid (no BFS distance fields)
+    jobs += [(f"{arch}raw_s{s}", ["--arch", arch, "--obs", "grid", "--seed", s, "--total_env_steps", STEPS]) for s in SEEDS]
+    return jobs
 
 
 def main():

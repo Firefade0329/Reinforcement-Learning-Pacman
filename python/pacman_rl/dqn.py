@@ -27,7 +27,7 @@ class TrainConfig:
     dueling: bool = True
     n_step: int = 3
     gamma: float = 0.99
-    lr: float = 2.5e-4
+    lr: float = 5e-4
     batch: int = 32
     buffer: int = 100_000
     learn_start: int = 4_000

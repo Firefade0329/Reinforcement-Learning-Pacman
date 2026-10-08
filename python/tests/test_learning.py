@@ -130,3 +130,23 @@ def test_raw_grid_mode_still_supported(tmp_path):
     train(TrainConfig(arch="cnn2", obs="grid", total_env_steps=160, learn_start=32, eval_every=160, n_envs=4,
                       buffer=500, batch=8), tmp_path, log=lambda *_: None)
     assert (tmp_path / "best.pt").exists()
+
+
+def test_readout_is_translation_equivariant_and_uses_agent_cell():
+    """Q-values depend on the neighbourhood of Pacman only (within the receptive field)."""
+    torch.manual_seed(0)
+    m = build_model("cnn2", 8)
+    x = torch.rand(1, *FIELD_SHAPE)
+    x[:, 2] = 0
+    x[0, 2, 10, 10] = 1.0
+    q0 = m(x)
+    far = x.clone()
+    far[0, :2, 2:4, 2:4] += 1.0          # change cells far outside the 5x5 receptive field
+    far[0, 5:, 2:4, 2:4] += 1.0
+    assert torch.allclose(m(far), q0, atol=1e-6)
+    near = x.clone()
+    near[0, 5, 10, 11] += 0.5            # change a neighbour of Pacman
+    assert not torch.allclose(m(near), q0, atol=1e-6)
+    # moving Pacman *and* its surroundings together leaves Q unchanged (equivariance, interior of the map)
+    shifted = torch.roll(x, shifts=(0, 3), dims=(2, 3))
+    assert torch.allclose(m(shifted), q0, atol=1e-5)
