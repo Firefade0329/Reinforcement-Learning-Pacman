@@ -62,13 +62,13 @@ def depth_jobs():
             for a in order for s in SEEDS]
 
 
-def algo_jobs():
-    arch = ABLATION_ARCH
+def algo_jobs(arch: str = ABLATION_ARCH):
     variants = {"nodouble": ["--no-double"], "nodueling": ["--no-dueling"], "nstep1": ["--n_step", 1]}
     jobs = [(f"{arch}-{v}_s{s}", ["--arch", arch, "--seed", s, "--total_env_steps", STEPS, *extra])
             for v, extra in variants.items() for s in SEEDS]
-    # input-representation control: same net on the raw 5-plane grid (no BFS distance fields)
-    jobs += [(f"{arch}raw_s{s}", ["--arch", arch, "--obs", "grid", "--seed", s, "--total_env_steps", STEPS]) for s in SEEDS]
+    if arch != "mlp":
+        # input-representation control: same net on the raw 5-plane grid (no BFS distance fields)
+        jobs += [(f"{arch}raw_s{s}", ["--arch", arch, "--obs", "grid", "--seed", s, "--total_env_steps", STEPS]) for s in SEEDS]
     return jobs
 
 
@@ -78,6 +78,8 @@ def main():
         pool(depth_jobs())
     elif what == "algo":
         pool(algo_jobs())
+    elif what == "algo_mlp":  # cheap: same ablation on the MLP
+        pool(algo_jobs("mlp"), workers=1)
     elif what == "tabular":
         for s in SEEDS:
             if not (RESULTS / "runs" / f"tabular_s{s}" / "test_hard.json").exists():

@@ -150,3 +150,13 @@ def test_readout_is_translation_equivariant_and_uses_agent_cell():
     # moving Pacman *and* its surroundings together leaves Q unchanged (equivariance, interior of the map)
     shifted = torch.roll(x, shifts=(0, 3), dims=(2, 3))
     assert torch.allclose(m(shifted), q0, atol=1e-5)
+
+
+def test_replay_gif_is_written(tmp_path):
+    from pacman_rl.baselines import RandomAgent
+    from pacman_rl.render import record
+
+    agent = RandomAgent(0)
+    out = tmp_path / "r.gif"
+    score, steps, died, won = record(agent.act, STANDARD, 10000, out, "random")
+    assert out.exists() and out.stat().st_size > 1000 and steps > 0

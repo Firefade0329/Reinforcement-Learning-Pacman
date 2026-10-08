@@ -1,0 +1,2 @@
+{"type": "train", "env_steps": 4000, "updates": 0, "eps": 0.9209916666666667, "score": 6.771739130434782, "return": -3.6272826086956487, "death": 1.0, "loss": null}
+{"type": "train", "env_steps": 8000, "updates": 998, "eps": 0.841825, "score": 10.155555555555555, "return": -0.2684444444444464, "death": 1.0, "loss": 1.312779142320156}

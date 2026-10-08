@@ -70,6 +70,8 @@ def table_seeds(scenario="standard"):
     for v in ("nodouble", "nodueling", "nstep1"):
         groups.append((f"{base} -{v}", [f"{base}-{v}_s{s}" for s in L.SEEDS]))
     groups.append((f"{base} raw grid (no distance fields)", [f"{base}raw_s{s}" for s in L.SEEDS]))
+    for v in ("nodouble", "nodueling", "nstep1"):
+        groups.append((f"mlp -{v}", [f"mlp-{v}_s{s}" for s in L.SEEDS]))
     for label, names in groups:
         ps = [L.run_eval(n, scenario) for n in names]
         if any(p is None for p in ps):

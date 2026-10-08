@@ -64,6 +64,33 @@ def cmd_eval_model(a):
         print(f"{ck_dir.name} {scen}/{a.split}: {fmt(p['summary'])}", flush=True)
 
 
+def cmd_replay(a):
+    from .render import record
+
+    cfg = SCENARIOS[a.scenario]
+    if a.agent.endswith(".pt"):
+        import numpy as np
+        import torch
+
+        from .dqn import load_checkpoint, observe_fn
+
+        model, tcfg, _ = load_checkpoint(Path(a.agent))
+        model.eval()
+        observe = observe_fn(tcfg.arch, tcfg.obs)
+
+        def act(env):
+            with torch.no_grad():
+                return int(model(torch.from_numpy(observe(env))[None]).argmax(1))
+
+        label = Path(a.agent).parent.name
+    else:
+        agent = make_agent(a.agent, a.seed)
+        agent.reset()
+        act, label = agent.act, a.agent
+    out = Path(a.out) if a.out else RESULTS / "replays" / f"{label}__{a.scenario}__seed{a.seed}.gif"
+    print(label, a.scenario, "-> score/steps/died/won", record(act, cfg, a.seed, out, label), out)
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -100,6 +127,13 @@ def main():
     p.add_argument("--split", default="val", choices=list(SPLITS))
     p.add_argument("--scenarios", nargs="+", default=["standard"], choices=list(SCENARIOS))
     p.set_defaults(fn=cmd_eval_model)
+
+    p = sub.add_parser("replay")
+    p.add_argument("--agent", required=True, help="random|greedy-bfs|legacy|safe-heuristic or path to best.pt")
+    p.add_argument("--seed", type=int, default=10000)
+    p.add_argument("--scenario", default="standard", choices=list(SCENARIOS))
+    p.add_argument("--out")
+    p.set_defaults(fn=cmd_replay)
 
     a = ap.parse_args()
     a.fn(a)
