@@ -18,3 +18,12 @@
 {"type": "train", "env_steps": 72000, "updates": 17002, "eps": 0.050000000000000044, "score": 162.8181818181818, "return": 151.0700000000007, "death": 0.9696969696969697, "loss": 0.9664250176399947}
 {"type": "train", "env_steps": 80000, "updates": 19002, "eps": 0.050000000000000044, "score": 195.8, "return": 183.64466666666766, "death": 0.9666666666666667, "loss": 0.9861412022411823}
 {"type": "eval", "env_steps": 80000, "updates": 19002, "val_score": 234.56, "val_death": 0.78, "val_win": 0.22, "minutes": 2.1658316095670065}
+{"type": "train", "env_steps": 88000, "updates": 21002, "eps": 0.050000000000000044, "score": 176.96774193548387, "return": 164.43774193548472, "death": 1.0, "loss": 0.9364819428771735}
+{"type": "train", "env_steps": 92000, "updates": 22002, "eps": 0.050000000000000044, "score": 145.76190476190476, "return": 134.61523809523862, "death": 0.9523809523809523, "loss": 0.901036851644516}
+{"type": "train", "env_steps": 96000, "updates": 23002, "eps": 0.050000000000000044, "score": 108.78260869565217, "return": 97.32956521739152, "death": 1.0, "loss": 1.0710773968696594}
+{"type": "eval", "env_steps": 100000, "updates": 24002, "val_score": 212.56, "val_death": 0.86, "val_win": 0.14, "minutes": 2.694421712557475}
+{"type": "train", "env_steps": 104000, "updates": 25002, "eps": 0.050000000000000044, "score": 153.8108108108108, "return": 142.14162162162222, "death": 0.972972972972973, "loss": 0.8719236312359572}
+{"type": "train", "env_steps": 112000, "updates": 27002, "eps": 0.050000000000000044, "score": 164.3125, "return": 153.20593750000074, "death": 0.9375, "loss": 0.87490408231318}
+{"type": "train", "env_steps": 120000, "updates": 29002, "eps": 0.050000000000000044, "score": 211.12, "return": 202.01360000000128, "death": 0.8, "loss": 0.7953835498690606}
+{"type": "eval", "env_steps": 120000, "updates": 29002, "val_score": 258.8, "val_death": 0.72, "val_win": 0.28, "minutes": 3.2872203469276426}
+{"type": "eval", "env_steps": 120000, "updates": 29002, "val_score": 258.8, "val_death": 0.72, "val_win": 0.28, "minutes": 3.3510489066441855}

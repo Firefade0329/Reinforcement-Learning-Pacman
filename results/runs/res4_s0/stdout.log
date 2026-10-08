@@ -2,3 +2,5 @@ training res4_s0 -> /home/user/Reinforcement-Learning-Pacman/results/runs/res4_s
 TrainConfig(arch='res4', obs='fields', width=16, double=True, dueling=True, n_step=3, gamma=0.99, lr=0.0005, batch=32, buffer=100000, learn_start=4000, n_envs=8, steps_per_update=4, total_env_steps=120000, tau=0.01, eps_start=1.0, eps_end=0.05, eps_frac=0.4, grad_clip=10.0, eval_every=20000, seed=0, threads=1)
 [val] steps=20000 updates=3998 val_score=16.6 death=1.00 win=0.00 (10.5 min)
 [val] steps=40000 updates=8998 val_score=42.8 death=1.00 win=0.00 (25.8 min)
+[val] steps=60000 updates=13998 val_score=73.6 death=1.00 win=0.00 (39.5 min)
+[val] steps=80000 updates=18998 val_score=98.6 death=1.00 win=0.00 (49.7 min)

@@ -4,3 +4,9 @@ TrainConfig(arch='mlp', obs='fields', width=16, double=True, dueling=True, n_ste
 [val] steps=40000 updates=9002 val_score=221.3 death=0.84 win=0.16 (1.0 min)
 [val] steps=60000 updates=14002 val_score=225.0 death=0.76 win=0.24 (1.6 min)
 [val] steps=80000 updates=19002 val_score=234.6 death=0.78 win=0.22 (2.2 min)
+[val] steps=100000 updates=24002 val_score=212.6 death=0.86 win=0.14 (2.7 min)
+[val] steps=120000 updates=29002 val_score=258.8 death=0.72 win=0.28 (3.3 min)
+[final] steps=120000 updates=29002 val_score=258.8 death=0.72 win=0.28 (3.4 min)
+{"best_val_score": 258.8, "best_env_steps": 120000, "updates": 29002, "minutes": 3.351088778177897}
+mlp-nstep1_s2 standard/test: score 260.6 [246.5, 274.2]  death 0.67  win 0.33  steps 392
+mlp-nstep1_s2 hard/test: score 70.2 [64.4, 76.4]  death 1.00  win 0.00  steps 88
