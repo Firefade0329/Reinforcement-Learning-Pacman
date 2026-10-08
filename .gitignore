@@ -1,0 +1,3 @@
+results/runs/pilot_*/
+results/runs/smoke_*/
+*.pt.tmp

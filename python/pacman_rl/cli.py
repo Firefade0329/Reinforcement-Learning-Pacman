@@ -1,0 +1,108 @@
+"""Command line entry point:  python -m pacman_rl.cli <command> ...  (run from python/)."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from dataclasses import fields
+from pathlib import Path
+
+from .baselines import make_agent
+from .evaluate import SCENARIOS, TEST_SEEDS, VAL_SEEDS, evaluate_named, save_eval, summarize
+
+RESULTS = Path(os.environ.get("PACMAN_RESULTS_DIR") or Path(__file__).resolve().parents[2] / "results")
+SPLITS = {"val": VAL_SEEDS, "test": TEST_SEEDS}
+
+
+def fmt(s: dict) -> str:
+    return (f"score {s['score_mean']:.1f} [{s['score_ci'][0]:.1f}, {s['score_ci'][1]:.1f}]  "
+            f"death {s['death_rate']:.2f}  win {s['win_rate']:.2f}  steps {s['steps_mean']:.0f}")
+
+
+def cmd_baseline(a):
+    recs = evaluate_named(a.agent, SCENARIOS[a.scenario], SPLITS[a.split], workers=a.workers)
+    out = Path(a.out) if a.out else RESULTS / "eval" / f"{a.agent}__{a.scenario}__{a.split}.json"
+    p = save_eval(out, a.agent, a.scenario, a.split, recs)
+    print(f"{a.agent:15s} {a.scenario}/{a.split}: {fmt(p['summary'])}")
+
+
+def cmd_tabular(a):
+    from .evaluate import evaluate_batched
+    from .tabular import TabularAgent, save_q, train_tabular
+
+    q, curve = train_tabular(a.episodes, a.seed, log=print)
+    run = RESULTS / "runs" / f"tabular_s{a.seed}"
+    save_q(run / "q.json", q, curve)
+    agent = TabularAgent(q)
+    for split in ("val", "test") if a.test else ("val",):
+        for scen in ("standard", "hard") if split == "test" else ("standard",):
+            from .evaluate import play_episode
+            recs = [play_episode(agent, SCENARIOS[scen], s) for s in SPLITS[split]]
+            p = save_eval(run / f"{split}_{scen}.json", f"tabular-q_s{a.seed}", scen, split, recs)
+            print(f"tabular-q s{a.seed} {scen}/{split}: {fmt(p['summary'])}")
+
+
+def cmd_train(a):
+    from .dqn import TrainConfig, train
+
+    kw = {f.name: getattr(a, f.name) for f in fields(TrainConfig) if getattr(a, f.name, None) is not None}
+    cfg = TrainConfig(**kw)
+    name = a.name or f"{cfg.arch}_s{cfg.seed}"
+    out = RESULTS / "runs" / name
+    print(f"training {name} -> {out}\n{cfg}", flush=True)
+    print(json.dumps(train(cfg, out, log=lambda m: print(m, flush=True))))
+
+
+def cmd_eval_model(a):
+    from .dqn import evaluate_model, load_checkpoint
+
+    model, cfg, _ = load_checkpoint(Path(a.ckpt))
+    ck_dir = Path(a.ckpt).parent
+    for scen in a.scenarios:
+        recs = evaluate_model(model, cfg.arch, SCENARIOS[scen], SPLITS[a.split])
+        p = save_eval(ck_dir / f"{a.split}_{scen}.json", ck_dir.name, scen, a.split, recs)
+        print(f"{ck_dir.name} {scen}/{a.split}: {fmt(p['summary'])}", flush=True)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    p = sub.add_parser("baseline")
+    p.add_argument("--agent", required=True, choices=["random", "greedy-bfs", "legacy", "safe-heuristic"])
+    p.add_argument("--scenario", default="standard", choices=list(SCENARIOS))
+    p.add_argument("--split", default="val", choices=list(SPLITS))
+    p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--out")
+    p.set_defaults(fn=cmd_baseline)
+
+    p = sub.add_parser("tabular")
+    p.add_argument("--episodes", type=int, default=3000)
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--test", action="store_true", help="also evaluate on the test split (final runs only)")
+    p.set_defaults(fn=cmd_tabular)
+
+    p = sub.add_parser("train")
+    p.add_argument("--name")
+    p.add_argument("--arch", choices=["mlp", "cnn2", "res2", "res4", "res8"])
+    for k, t in [("width", int), ("n_step", int), ("batch", int), ("buffer", int), ("learn_start", int),
+                 ("n_envs", int), ("steps_per_update", int), ("total_env_steps", int), ("eval_every", int),
+                 ("seed", int), ("threads", int), ("lr", float), ("gamma", float), ("tau", float),
+                 ("eps_end", float), ("eps_frac", float)]:
+        p.add_argument(f"--{k}", type=t)
+    p.add_argument("--no-double", dest="double", action="store_false", default=None)
+    p.add_argument("--no-dueling", dest="dueling", action="store_false", default=None)
+    p.set_defaults(fn=cmd_train)
+
+    p = sub.add_parser("eval-model")
+    p.add_argument("--ckpt", required=True)
+    p.add_argument("--split", default="val", choices=list(SPLITS))
+    p.add_argument("--scenarios", nargs="+", default=["standard"], choices=list(SCENARIOS))
+    p.set_defaults(fn=cmd_eval_model)
+
+    a = ap.parse_args()
+    a.fn(a)
+
+
+if __name__ == "__main__":
+    main()
