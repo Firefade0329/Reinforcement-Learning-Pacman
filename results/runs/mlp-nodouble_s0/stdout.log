@@ -1,3 +1,12 @@
 training mlp-nodouble_s0 -> /home/user/Reinforcement-Learning-Pacman/results/runs/mlp-nodouble_s0
 TrainConfig(arch='mlp', obs='fields', width=16, double=False, dueling=True, n_step=3, gamma=0.99, lr=0.0005, batch=32, buffer=100000, learn_start=4000, n_envs=8, steps_per_update=4, total_env_steps=120000, tau=0.01, eps_start=1.0, eps_end=0.05, eps_frac=0.4, grad_clip=10.0, eval_every=20000, seed=0, threads=1)
 [val] steps=20000 updates=3998 val_score=75.8 death=1.00 win=0.00 (0.5 min)
+[val] steps=40000 updates=8998 val_score=115.9 death=1.00 win=0.00 (1.0 min)
+[val] steps=60000 updates=13998 val_score=260.9 death=0.76 win=0.24 (1.6 min)
+[val] steps=80000 updates=18998 val_score=238.4 death=0.80 win=0.20 (2.2 min)
+[val] steps=100000 updates=23998 val_score=271.0 death=0.80 win=0.20 (2.8 min)
+[val] steps=120000 updates=28998 val_score=244.2 death=0.86 win=0.14 (3.3 min)
+[final] steps=120000 updates=28998 val_score=244.2 death=0.86 win=0.14 (3.4 min)
+{"best_val_score": 270.98, "best_env_steps": 100000, "updates": 28998, "minutes": 3.3696229179700214}
+mlp-nodouble_s0 standard/test: score 253.2 [239.1, 267.2]  death 0.70  win 0.30  steps 372
+mlp-nodouble_s0 hard/test: score 73.2 [67.0, 79.8]  death 1.00  win 0.00  steps 94
