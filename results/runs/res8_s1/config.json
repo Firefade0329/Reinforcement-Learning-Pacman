@@ -20,5 +20,6 @@
  "grad_clip": 10.0,
  "eval_every": 20000,
  "seed": 1,
- "threads": 1
+ "threads": 1,
+ "device": "cpu"
 }
