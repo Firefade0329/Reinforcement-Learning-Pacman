@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from .env import FIELD_SHAPE, NUM_ACTIONS, OBS_SHAPE, STANDARD, PacmanEnv
+from .env import FIELD_SHAPE, GHOST_FIELD_RANGE, GOLD_FIELD_RANGE, NUM_ACTIONS, OBS_SHAPE, STANDARD, PacmanEnv
 from .evaluate import VAL_SEEDS, evaluate_batched, summarize, train_seed
 from .features import FEATURE_DIM, feature_vector
 from .models import build_model
@@ -81,6 +81,14 @@ def evaluate_model(model, cfg: "TrainConfig", scenario_cfg, seeds):
     return evaluate_batched(make_policy(model), scenario_cfg, seeds, observe_fn(cfg.arch, cfg.obs))
 
 
+def quant_scale(arch: str, obs: str):
+    """Per-channel constants making every conv observation value an integer (see replay.py)."""
+    if arch == "mlp":
+        return None
+    base = [1.0] * 5
+    return np.array(base + [GOLD_FIELD_RANGE, GHOST_FIELD_RANGE] if obs == "fields" else base, dtype=np.float32)
+
+
 def in_ch(cfg: "TrainConfig") -> int:
     return obs_spec(cfg.arch, cfg.obs)[0][0]
 
@@ -113,7 +121,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print) -> dict:
     target = copy.deepcopy(online)
     target.eval()
     opt = torch.optim.Adam(online.parameters(), lr=cfg.lr)
-    replay = NStepReplay(cfg.buffer, shape, dtype, cfg.n_envs, cfg.n_step, cfg.gamma)
+    replay = NStepReplay(cfg.buffer, shape, dtype, cfg.n_envs, cfg.n_step, cfg.gamma, quant_scale(cfg.arch, cfg.obs))
 
     envs = [PacmanEnv(STANDARD) for _ in range(cfg.n_envs)]
     episode_k = 0

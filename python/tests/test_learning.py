@@ -210,3 +210,26 @@ def test_bench_command_runs_on_cpu(capsys):
     cli.main()
     out = capsys.readouterr().out
     assert "ms/update" in out and "mlp" in out and "cnn2" in out
+
+
+def test_uint8_replay_roundtrip_matches_float_observations():
+    from pacman_rl.dqn import quant_scale
+
+    env = PacmanEnv(STANDARD)
+    env.reset(5)
+    q = NStepReplay(50, FIELD_SHAPE, np.float32, 1, 1, 0.9, quant_scale("res4", "fields"))
+    ref = NStepReplay(50, FIELD_SHAPE, np.float32, 1, 1, 0.9)
+    rng = np.random.default_rng(0)
+    for _ in range(40):
+        o = env.observation_fields()
+        _, r, term, trunc, _ = env.step(int(rng.integers(5)))
+        n = env.observation_fields()
+        q.add(0, o, 1, r, n, term, trunc)
+        ref.add(0, o, 1, r, n, term, trunc)
+        if term or trunc:
+            env.reset(6)
+    assert q.obs.dtype == np.uint8 and q.obs.nbytes * 4 == ref.obs.nbytes
+    a = q.sample(16, np.random.default_rng(1))
+    b = ref.sample(16, np.random.default_rng(1))
+    assert float((a[0] - b[0]).abs().max()) < 1e-6 and float((a[3] - b[3]).abs().max()) < 1e-6
+    assert torch.equal(a[1], b[1]) and torch.equal(a[2], b[2])

@@ -42,6 +42,12 @@ def run_one(name: str, train_args: list):
     if (run / "test_standard.json").exists():
         print(f"skip {name} (done)", flush=True)
         return
+    run.mkdir(parents=True, exist_ok=True)
+    try:
+        (run / ".lock").mkdir()  # atomic: several orchestrators may share one queue
+    except FileExistsError:
+        print(f"skip {name} (running elsewhere; remove {run / '.lock'} if stale)", flush=True)
+        return
     log = run / "stdout.log"
     log.unlink(missing_ok=True)
     print(f"start {name}", flush=True)
@@ -50,6 +56,7 @@ def run_one(name: str, train_args: list):
     if rc == 0:
         # final evaluation: checkpoint selected on VAL, reported on TEST (never used for selection)
         rc = sh(["eval-model", "--ckpt", run / "best.pt", "--split", "test", "--scenarios", "standard", "hard", *dev], log)
+    (run / ".lock").rmdir()
     print(f"{'done' if rc == 0 else 'FAILED'} {name}", flush=True)
 
 
