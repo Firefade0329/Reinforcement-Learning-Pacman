@@ -1,3 +1,12 @@
 {"type": "train", "env_steps": 4000, "updates": 0, "eps": 0.9209916666666667, "score": 6.771739130434782, "return": -3.6272826086956487, "death": 1.0, "loss": null}
 {"type": "train", "env_steps": 8000, "updates": 998, "eps": 0.841825, "score": 10.155555555555555, "return": -0.2684444444444464, "death": 1.0, "loss": 1.312779142320156}
 {"type": "train", "env_steps": 12000, "updates": 1998, "eps": 0.7626583333333333, "score": 12.933333333333334, "return": 2.4539999999999984, "death": 1.0, "loss": 2.2725405139923094}
+{"type": "train", "env_steps": 16000, "updates": 2998, "eps": 0.6834916666666666, "score": 14.011764705882353, "return": 3.5595294117647, "death": 1.0, "loss": 2.6598508682250976}
+{"type": "train", "env_steps": 20000, "updates": 3998, "eps": 0.604325, "score": 17.88235294117647, "return": 7.292352941176461, "death": 1.0, "loss": 2.658033187866211}
+{"type": "eval", "env_steps": 20000, "updates": 3998, "val_score": 16.56, "val_death": 1.0, "val_win": 0.0, "minutes": 10.499905280272166}
+{"type": "train", "env_steps": 24000, "updates": 4998, "eps": 0.5251583333333334, "score": 15.534883720930232, "return": 5.062093023255811, "death": 1.0, "loss": 2.5501716079711914}
+{"type": "train", "env_steps": 28000, "updates": 5998, "eps": 0.4459916666666667, "score": 19.73972602739726, "return": 9.170684931506841, "death": 1.0, "loss": 2.6031185760498046}
+{"type": "train", "env_steps": 32000, "updates": 6998, "eps": 0.36682500000000007, "score": 20.323943661971832, "return": 9.813943661971823, "death": 1.0, "loss": 2.6380633628368377}
+{"type": "train", "env_steps": 36000, "updates": 7998, "eps": 0.28765833333333335, "score": 26.52238805970149, "return": 15.919552238805972, "death": 1.0, "loss": 2.63255890583992}
+{"type": "train", "env_steps": 40000, "updates": 8998, "eps": 0.20849166666666663, "score": 34.075471698113205, "return": 23.351132075471654, "death": 1.0, "loss": 2.821709897994995}
+{"type": "eval", "env_steps": 40000, "updates": 8998, "val_score": 42.78, "val_death": 1.0, "val_win": 0.0, "minutes": 25.816640114784242}

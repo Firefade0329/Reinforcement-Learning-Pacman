@@ -1,2 +1,7 @@
 {"type": "train", "env_steps": 4000, "updates": 0, "eps": 0.9209916666666667, "score": 5.79646017699115, "return": -4.537433628318579, "death": 1.0, "loss": null}
 {"type": "train", "env_steps": 8000, "updates": 998, "eps": 0.841825, "score": 8.883720930232558, "return": -1.586976744186044, "death": 1.0, "loss": 1.1917641930580138}
+{"type": "train", "env_steps": 12000, "updates": 1998, "eps": 0.7626583333333333, "score": 8.595959595959595, "return": -1.795454545454545, "death": 1.0, "loss": 1.683383820772171}
+{"type": "train", "env_steps": 16000, "updates": 2998, "eps": 0.6834916666666666, "score": 10.688888888888888, "return": 0.23822222222221862, "death": 1.0, "loss": 1.570556186914444}
+{"type": "train", "env_steps": 20000, "updates": 3998, "eps": 0.604325, "score": 11.419354838709678, "return": 0.9858064516128974, "death": 1.0, "loss": 1.5628131849765778}
+{"type": "eval", "env_steps": 20000, "updates": 3998, "val_score": 16.72, "val_death": 1.0, "val_win": 0.0, "minutes": 20.625697306791942}
+{"type": "train", "env_steps": 24000, "updates": 4998, "eps": 0.5251583333333334, "score": 14.77027027027027, "return": 4.228378378378378, "death": 1.0, "loss": 1.6644522004127502}
