@@ -35,3 +35,36 @@ python -m pacman_rl.cli replay --agent ../results/runs/my_run/best.pt --seed 100
 
 Seeds: validation 5000–5049 (checkpoint selection only), test 10000–10299 (final numbers only),
 training seeds ≥ 1,000,000.
+
+## Training on a GPU (e.g. a laptop RTX A1000)
+
+The conv nets are tiny, so a mid-range GPU helps mostly by removing the CPU compute bottleneck
+(expect roughly 5-15x per gradient update; measure it with `bench`).  The game simulation stays
+on the CPU, and the MLP gains nothing from a GPU.
+
+```bash
+# 1. install a CUDA build of PyTorch (pick the command for your CUDA version at https://pytorch.org)
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+
+# 2. how fast is it here?  (ms per gradient update, per architecture)
+python -m pacman_rl.cli bench --device auto
+python -m pacman_rl.cli bench --device cpu            # compare
+
+# 3. a single run on the GPU
+python -m pacman_rl.cli train --name res4_gpu --arch res4 --device cuda --total_env_steps 300000
+
+# 4. the whole matrix, longer, in a separate results dir (results_gpu/)
+bash scripts/run_gpu_longrun.sh                       # PACMAN_STEPS / PACMAN_WORKERS / PACMAN_DEVICE override
+```
+
+Notes
+- `--device` is `cpu` (default, behaviour unchanged), `cuda`, or `auto`.  Checkpoints are
+  device-agnostic: a GPU-trained `best.pt` evaluates on CPU or GPU.
+- GPU results are statistically, not bit-for-bit, reproducible (CUDA kernels are not
+  deterministic); the same checkpoint evaluated twice on one device is still identical.
+- GPU runs write to their own results directory; do not mix them into the CPU matrix in `results/`.
+- Several runs share one GPU fine; the limit is usually the number of CPU cores stepping the
+  environments, so start with `PACMAN_WORKERS=3`.
+- **Before committing from another machine**, set the repo-local git identity so your global
+  e-mail is not attached to commits:
+  `git config user.name "Firefade0329" && git config user.email "114788148+Firefade0329@users.noreply.github.com"`

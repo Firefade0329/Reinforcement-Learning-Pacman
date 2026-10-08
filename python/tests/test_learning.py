@@ -160,3 +160,53 @@ def test_replay_gif_is_written(tmp_path):
     out = tmp_path / "r.gif"
     score, steps, died, won = record(agent.act, STANDARD, 10000, out, "random")
     assert out.exists() and out.stat().st_size > 1000 and steps > 0
+
+
+def test_resolve_device_and_cpu_default():
+    from pacman_rl.dqn import TrainConfig, resolve_device
+
+    assert TrainConfig().device == "cpu"
+    assert resolve_device("cpu").type == "cpu"
+    assert resolve_device("auto").type in ("cpu", "cuda")
+    if not torch.cuda.is_available():
+        with pytest.raises(RuntimeError, match="CUDA"):
+            resolve_device("cuda")
+
+
+def test_old_checkpoint_without_device_field_still_loads(tmp_path):
+    """Checkpoints written before the 'device' field existed must keep loading."""
+    from pacman_rl.dqn import TrainConfig, load_checkpoint, save_checkpoint
+    from dataclasses import asdict
+
+    cfg = TrainConfig(arch="cnn2")
+    model = build_model("cnn2", cfg.width, cfg.dueling, 7)
+    d = asdict(cfg)
+    d.pop("device")
+    torch.save({"state_dict": model.state_dict(), "cfg": d}, tmp_path / "old.pt")
+    m2, cfg2, _ = load_checkpoint(tmp_path / "old.pt")
+    assert cfg2.device == "cpu" and next(m2.parameters()).device.type == "cpu"
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a CUDA GPU")
+def test_gpu_training_smoke_and_cpu_eval_roundtrip(tmp_path):
+    from pacman_rl.dqn import TrainConfig, evaluate_model, load_checkpoint, train
+    from pacman_rl.evaluate import VAL_SEEDS
+
+    cfg = TrainConfig(arch="res2", device="cuda", total_env_steps=480, learn_start=64, eval_every=480,
+                      n_envs=4, buffer=2000, batch=8)
+    train(cfg, tmp_path, log=lambda *_: None)
+    for dev in ("cpu", "cuda"):  # a GPU-trained checkpoint evaluates on either device
+        model, cfg2, _ = load_checkpoint(tmp_path / "last.pt", dev)
+        a = evaluate_model(model, cfg2, STANDARD, VAL_SEEDS[:3])
+        b = evaluate_model(model, cfg2, STANDARD, VAL_SEEDS[:3])
+        assert a == b
+
+
+def test_bench_command_runs_on_cpu(capsys):
+    import sys
+    from pacman_rl import cli
+
+    sys.argv = ["cli", "bench", "--device", "cpu", "--archs", "mlp", "cnn2", "--iters", "2"]
+    cli.main()
+    out = capsys.readouterr().out
+    assert "ms/update" in out and "mlp" in out and "cnn2" in out

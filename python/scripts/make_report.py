@@ -7,6 +7,7 @@ No number in the report is typed by hand.  Run after the experiments:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -16,7 +17,7 @@ import numpy as np
 import acceptance_lib as L
 
 FIG = L.RESULTS / "figures"
-OUT = L.ROOT / "docs" / "RESULTS.md"
+OUT = (L.RESULTS / "RESULTS.md") if os.environ.get("PACMAN_RESULTS_DIR") else (L.ROOT / "docs" / "RESULTS.md")
 LABEL = {"random": "L0 random", "greedy-bfs": "L1 greedy-BFS (no dodging)", "legacy": "L2 legacy (Java replica)",
          "safe-heuristic": "L3 safe-heuristic", "tabular": "L4 tabular Q (64 states)",
          "mlp": "L5 MLP-DQN", "cnn2": "L6 CNN-2 DQN", "res2": "L7 ResNet-2 DQN", "res4": "L7 ResNet-4 DQN",

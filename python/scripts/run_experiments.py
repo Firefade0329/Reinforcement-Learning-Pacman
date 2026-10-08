@@ -21,8 +21,10 @@ PY = Path(__file__).resolve().parents[1]
 RESULTS = Path(os.environ.get("PACMAN_RESULTS_DIR") or PY.parent / "results")
 SEEDS = (0, 1, 2)
 ARCHS = ("mlp", "cnn2", "res2", "res4", "res8")
+DEVICE = os.environ.get("PACMAN_DEVICE", "cpu")      # cpu | cuda | auto (conv nets only; the MLP stays on CPU)
+WORKERS = int(os.environ.get("PACMAN_WORKERS", "4"))
 ABLATION_ARCH = "res4"  # fixed a priori (middle depth, affordable); see PLAN.md section 9, deviation 4
-STEPS = 120_000  # env transitions per run; see docs/PLAN.md section 9 for the budget rationale
+STEPS = int(os.environ.get("PACMAN_STEPS", "120000"))  # env transitions per run; see docs/PLAN.md section 9 for the budget rationale
 
 
 def sh(args, log: Path | None = None):
@@ -43,15 +45,16 @@ def run_one(name: str, train_args: list):
     log = run / "stdout.log"
     log.unlink(missing_ok=True)
     print(f"start {name}", flush=True)
-    rc = sh(["train", "--name", name, *train_args], log)
+    dev = ["--device", DEVICE] if "mlp" not in map(str, train_args) else []
+    rc = sh(["train", "--name", name, *train_args, *dev], log)
     if rc == 0:
         # final evaluation: checkpoint selected on VAL, reported on TEST (never used for selection)
-        rc = sh(["eval-model", "--ckpt", run / "best.pt", "--split", "test", "--scenarios", "standard", "hard"], log)
+        rc = sh(["eval-model", "--ckpt", run / "best.pt", "--split", "test", "--scenarios", "standard", "hard", *dev], log)
     print(f"{'done' if rc == 0 else 'FAILED'} {name}", flush=True)
 
 
-def pool(jobs, workers=4):
-    with ThreadPoolExecutor(workers) as ex:
+def pool(jobs, workers=None):
+    with ThreadPoolExecutor(workers or WORKERS) as ex:
         list(ex.map(lambda j: run_one(*j), jobs))
 
 

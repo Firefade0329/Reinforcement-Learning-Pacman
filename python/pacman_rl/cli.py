@@ -56,12 +56,49 @@ def cmd_train(a):
 def cmd_eval_model(a):
     from .dqn import evaluate_model, load_checkpoint
 
-    model, cfg, _ = load_checkpoint(Path(a.ckpt))
+    model, cfg, _ = load_checkpoint(Path(a.ckpt), a.device)
     ck_dir = Path(a.ckpt).parent
     for scen in a.scenarios:
         recs = evaluate_model(model, cfg, SCENARIOS[scen], SPLITS[a.split])
         p = save_eval(ck_dir / f"{a.split}_{scen}.json", ck_dir.name, scen, a.split, recs)
         print(f"{ck_dir.name} {scen}/{a.split}: {fmt(p['summary'])}", flush=True)
+
+
+def cmd_bench(a):
+    import time
+
+    import torch
+
+    from .dqn import in_ch, resolve_device, TrainConfig
+    from .env import FIELD_SHAPE
+    from .features import FEATURE_DIM
+    from .models import build_model
+
+    dev = resolve_device(a.device)
+    print(f"device: {dev}" + (f" ({torch.cuda.get_device_name(dev)})" if dev.type == "cuda" else ""))
+    for arch in a.archs:
+        cfg = TrainConfig(arch=arch)
+        model = build_model(arch, cfg.width, cfg.dueling, in_ch(cfg)).to(dev)
+        opt = torch.optim.Adam(model.parameters(), lr=1e-4)
+        shape = (FEATURE_DIM,) if arch == "mlp" else FIELD_SHAPE
+        x = torch.rand(a.batch, *shape, device=dev)
+        if arch != "mlp":  # a valid one-hot Pacman plane, as in real observations
+            x[:, 2] = 0
+            x[:, 2, 5, 5] = 1
+        def step():
+            opt.zero_grad(set_to_none=True)
+            model(x).sum().backward()
+            opt.step()
+        for _ in range(3):
+            step()
+        if dev.type == "cuda":
+            torch.cuda.synchronize()
+        t = time.time()
+        for _ in range(a.iters):
+            step()
+        if dev.type == "cuda":
+            torch.cuda.synchronize()
+        print(f"{arch:5s} batch {a.batch}: {(time.time() - t) / a.iters * 1000:7.1f} ms/update")
 
 
 def cmd_replay(a):
@@ -113,6 +150,7 @@ def main():
     p.add_argument("--name")
     p.add_argument("--arch", choices=["mlp", "cnn2", "res2", "res4", "res8"])
     p.add_argument("--obs", choices=["fields", "grid"])
+    p.add_argument("--device", choices=["cpu", "cuda", "auto"])
     for k, t in [("width", int), ("n_step", int), ("batch", int), ("buffer", int), ("learn_start", int),
                  ("n_envs", int), ("steps_per_update", int), ("total_env_steps", int), ("eval_every", int),
                  ("seed", int), ("threads", int), ("lr", float), ("gamma", float), ("tau", float),
@@ -126,7 +164,15 @@ def main():
     p.add_argument("--ckpt", required=True)
     p.add_argument("--split", default="val", choices=list(SPLITS))
     p.add_argument("--scenarios", nargs="+", default=["standard"], choices=list(SCENARIOS))
+    p.add_argument("--device", default="cpu", choices=["cpu", "cuda", "auto"])
     p.set_defaults(fn=cmd_eval_model)
+
+    p = sub.add_parser("bench", help="time gradient updates per architecture on a device")
+    p.add_argument("--device", default="auto", choices=["cpu", "cuda", "auto"])
+    p.add_argument("--archs", nargs="+", default=["mlp", "cnn2", "res2", "res4", "res8"])
+    p.add_argument("--batch", type=int, default=32)
+    p.add_argument("--iters", type=int, default=30)
+    p.set_defaults(fn=cmd_bench)
 
     p = sub.add_parser("replay")
     p.add_argument("--agent", required=True, help="random|greedy-bfs|legacy|safe-heuristic or path to best.pt")

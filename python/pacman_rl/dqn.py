@@ -42,6 +42,7 @@ class TrainConfig:
     eval_every: int = 20_000
     seed: int = 0
     threads: int = 1
+    device: str = "cpu"           # cpu | cuda | auto (cuda if available)
 
 
 def observe_fn(arch: str, obs: str = "fields"):
@@ -56,12 +57,22 @@ def obs_spec(arch: str, obs: str = "fields"):
     return (FIELD_SHAPE if obs == "fields" else OBS_SHAPE), np.float32
 
 
+def resolve_device(name: str = "cpu") -> torch.device:
+    if name == "auto":
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if name.startswith("cuda") and not torch.cuda.is_available():
+        raise RuntimeError("--device cuda requested but torch.cuda.is_available() is False "
+                           "(install a CUDA build of PyTorch, see python/README.md)")
+    return torch.device(name)
+
+
 def make_policy(model: torch.nn.Module):
     model.eval()
+    device = next(model.parameters()).device
 
     @torch.no_grad()
     def policy(batch: np.ndarray) -> np.ndarray:
-        return model(torch.from_numpy(batch)).argmax(dim=1).numpy()
+        return model(torch.from_numpy(batch).to(device)).argmax(dim=1).cpu().numpy()
 
     return policy
 
@@ -79,24 +90,26 @@ def save_checkpoint(path: Path, model, cfg: TrainConfig, extra: dict):
     torch.save({"state_dict": model.state_dict(), "cfg": asdict(cfg), **extra}, path)
 
 
-def load_checkpoint(path: Path):
+def load_checkpoint(path: Path, device: str = "cpu"):
+    """Checkpoints are device-agnostic; ``device`` only says where the returned model lives."""
     ck = torch.load(path, map_location="cpu", weights_only=False)
     cfg = TrainConfig(**ck["cfg"])
     model = build_model(cfg.arch, cfg.width, cfg.dueling, in_ch(cfg))
     model.load_state_dict(ck["state_dict"])
-    return model, cfg, ck
+    return model.to(resolve_device(device)), cfg, ck
 
 
 def train(cfg: TrainConfig, out_dir: Path, log=print) -> dict:
     torch.set_num_threads(cfg.threads)
-    torch.manual_seed(cfg.seed)
+    torch.manual_seed(cfg.seed)  # also seeds CUDA; GPU runs are statistically, not bitwise, reproducible
+    device = resolve_device(cfg.device)
     rng = np.random.default_rng(cfg.seed)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "config.json").write_text(json.dumps(asdict(cfg), indent=1))
 
     observe = observe_fn(cfg.arch, cfg.obs)
     shape, dtype = obs_spec(cfg.arch, cfg.obs)
-    online = build_model(cfg.arch, cfg.width, cfg.dueling, in_ch(cfg))
+    online = build_model(cfg.arch, cfg.width, cfg.dueling, in_ch(cfg)).to(device)
     target = copy.deepcopy(online)
     target.eval()
     opt = torch.optim.Adam(online.parameters(), lr=cfg.lr)
@@ -138,7 +151,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print) -> dict:
         eps = cfg.eps_start + (cfg.eps_end - cfg.eps_start) * frac
         online.eval()
         with torch.no_grad():
-            greedy = online(torch.from_numpy(np.stack(obs))).argmax(dim=1).numpy()
+            greedy = online(torch.from_numpy(np.stack(obs)).to(device)).argmax(dim=1).cpu().numpy()
         online.train()
         explore = rng.random(cfg.n_envs) < eps
         actions = np.where(explore, rng.integers(0, NUM_ACTIONS, cfg.n_envs), greedy)
@@ -163,7 +176,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print) -> dict:
             update_budget += cfg.n_envs / cfg.steps_per_update
             while update_budget >= 1.0:
                 update_budget -= 1.0
-                o, a, ret, o2, disc = replay.sample(cfg.batch, rng)
+                o, a, ret, o2, disc = (t.to(device, non_blocking=True) for t in replay.sample(cfg.batch, rng))
                 with torch.no_grad():
                     if cfg.double:
                         a2 = online(o2).argmax(dim=1, keepdim=True)
@@ -181,12 +194,14 @@ def train(cfg: TrainConfig, out_dir: Path, log=print) -> dict:
                     for tp, op in zip(target.parameters(), online.parameters()):
                         tp.mul_(1 - cfg.tau).add_(op.detach(), alpha=cfg.tau)
                 updates += 1
-                losses.append(loss.item())
+                losses.append(loss.detach())  # no per-update GPU sync
+                if len(losses) > 1000:
+                    del losses[:-500]
 
         if len(recent_scores) >= 20 and env_steps % (cfg.n_envs * 500) == 0:
             row = {"type": "train", "env_steps": env_steps, "updates": updates, "eps": eps,
                    "score": float(np.mean(recent_scores)), "return": float(np.mean(recent_rets)),
-                   "death": float(np.mean(recent_deaths)), "loss": float(np.mean(losses[-500:])) if losses else None}
+                   "death": float(np.mean(recent_deaths)), "loss": float(torch.stack(losses[-500:]).mean()) if losses else None}
             train_log.write(json.dumps(row) + "\n")
             train_log.flush()
             recent_scores, recent_rets, recent_deaths = [], [], []
