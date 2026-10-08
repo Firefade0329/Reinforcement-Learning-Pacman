@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
@@ -37,26 +38,49 @@ def sh(args, log: Path | None = None):
     return subprocess.run(cmd, cwd=PY, env=env).returncode
 
 
+def take_lock(run: Path) -> bool:
+    """Atomic per-run lock holding the orchestrator's pid; a lock whose owner is gone (killed or
+    suspended machine) is stale and is taken over, so interrupted runs resume automatically."""
+    lock = run / ".lock"
+    for _ in range(2):
+        try:
+            lock.mkdir()
+            (lock / "pid").write_text(str(os.getpid()))
+            return True
+        except FileExistsError:
+            pid_file = lock / "pid"
+            pid = int(pid_file.read_text()) if pid_file.exists() and pid_file.read_text().strip().isdigit() else None
+            if pid is not None and (Path(f"/proc/{pid}").exists() or not Path("/proc").exists()):
+                return False  # owner alive (or cannot tell: be conservative)
+            stale = run / f".lock.stale.{os.getpid()}"
+            try:
+                os.rename(lock, stale)
+            except OSError:
+                return False
+            shutil.rmtree(stale, ignore_errors=True)
+    return False
+
+
 def run_one(name: str, train_args: list):
     run = RESULTS / "runs" / name
     if (run / "test_standard.json").exists():
         print(f"skip {name} (done)", flush=True)
         return
     run.mkdir(parents=True, exist_ok=True)
-    try:
-        (run / ".lock").mkdir()  # atomic: several orchestrators may share one queue
-    except FileExistsError:
+    if not take_lock(run):
         print(f"skip {name} (running elsewhere; remove {run / '.lock'} if stale)", flush=True)
         return
     log = run / "stdout.log"
-    log.unlink(missing_ok=True)
-    print(f"start {name}", flush=True)
+    resuming = (run / "resume.pt").exists()
+    if not resuming:
+        log.unlink(missing_ok=True)
+    print(f"{'resume' if resuming else 'start'} {name}", flush=True)
     dev = ["--device", DEVICE] if "mlp" not in map(str, train_args) else []
     rc = sh(["train", "--name", name, *train_args, *dev], log)
     if rc == 0:
         # final evaluation: checkpoint selected on VAL, reported on TEST (never used for selection)
         rc = sh(["eval-model", "--ckpt", run / "best.pt", "--split", "test", "--scenarios", "standard", "hard", *dev], log)
-    (run / ".lock").rmdir()
+    shutil.rmtree(run / ".lock", ignore_errors=True)
     print(f"{'done' if rc == 0 else 'FAILED'} {name}", flush=True)
 
 

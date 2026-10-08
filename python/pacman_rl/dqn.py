@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -107,7 +108,10 @@ def load_checkpoint(path: Path, device: str = "cpu"):
     return model.to(resolve_device(device)), cfg, ck
 
 
-def train(cfg: TrainConfig, out_dir: Path, log=print) -> dict:
+def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop_after: int | None = None) -> dict:
+    """Train ``cfg``.  Every eval boundary writes resume.pt + resume_replay.npz in ``out_dir``; calling
+    train() again on the same directory continues from there (episodes restart, RNG streams continue),
+    so a killed or suspended machine loses at most ``eval_every`` steps.  ``_stop_after`` is for tests."""
     torch.set_num_threads(cfg.threads)
     torch.manual_seed(cfg.seed)  # also seeds CUDA; GPU runs are statistically, not bitwise, reproducible
     device = resolve_device(cfg.device)
@@ -132,12 +136,50 @@ def train(cfg: TrainConfig, out_dir: Path, log=print) -> dict:
         episode_k += 1
         obs.append(observe(e))
 
-    train_log = open(out_dir / "train_log.jsonl", "w")
+    state_path, replay_path = out_dir / "resume.pt", out_dir / "resume_replay.npz"
     best_val, best_step = -1.0, 0
     env_steps, updates, next_eval = 0, 0, cfg.eval_every
+    update_budget, minutes0, resumed = 0.0, 0.0, False
+    if resume and state_path.exists() and replay_path.exists():
+        ck = torch.load(state_path, map_location="cpu", weights_only=False)
+        strip = lambda d: {k: v for k, v in d.items() if k != "device"}  # noqa: E731
+        if strip(ck["cfg"]) == strip(asdict(cfg)):
+            online.load_state_dict(ck["online"])
+            target.load_state_dict(ck["target"])
+            opt.load_state_dict(ck["opt"])
+            env_steps, updates, next_eval = ck["env_steps"], ck["updates"], ck["next_eval"]
+            best_val, best_step, update_budget, minutes0 = ck["best_val"], ck["best_step"], ck["update_budget"], ck["minutes"]
+            episode_k = ck["episode_k"]
+            rng.bit_generator.state = ck["rng"]
+            torch.set_rng_state(ck["torch_rng"])
+            data = np.load(replay_path)
+            n = int(ck["replay_size"])
+            for name in ("obs", "next_obs", "act", "ret", "disc"):
+                getattr(replay, name)[:n] = data[name]
+            replay.pos, replay.size = int(ck["replay_pos"]), n
+            for i, e in enumerate(envs):  # fresh episodes with unused seeds
+                e.reset(train_seed(cfg.seed, episode_k))
+                episode_k += 1
+                obs[i] = observe(e)
+            resumed = True
+            log(f"[resume] continuing from env_steps={env_steps} updates={updates}")
+        else:
+            log("[resume] saved state does not match this config; starting from scratch")
+    train_log = open(out_dir / "train_log.jsonl", "a" if resumed else "w")
     recent_scores, recent_rets, recent_deaths, losses = [], [], [], []
-    t0 = time.time()
-    update_budget = 0.0
+    t0 = time.time() - minutes0 * 60
+
+    def save_state():
+        n = replay.size
+        tmp = out_dir / "resume_replay.tmp.npz"
+        np.savez(tmp, obs=replay.obs[:n], next_obs=replay.next_obs[:n], act=replay.act[:n], ret=replay.ret[:n], disc=replay.disc[:n])
+        torch.save({"cfg": asdict(cfg), "online": online.state_dict(), "target": target.state_dict(), "opt": opt.state_dict(),
+                    "env_steps": env_steps, "updates": updates, "next_eval": next_eval, "best_val": best_val,
+                    "best_step": best_step, "update_budget": update_budget, "minutes": (time.time() - t0) / 60,
+                    "episode_k": episode_k, "rng": rng.bit_generator.state, "torch_rng": torch.get_rng_state(),
+                    "replay_size": n, "replay_pos": replay.pos}, out_dir / "resume.tmp.pt")
+        os.replace(tmp, replay_path)
+        os.replace(out_dir / "resume.tmp.pt", state_path)  # the state file is the commit marker
 
     def do_eval(tag: str):
         nonlocal best_val, best_step
@@ -217,10 +259,16 @@ def train(cfg: TrainConfig, out_dir: Path, log=print) -> dict:
         if env_steps >= next_eval:
             do_eval("val")
             next_eval += cfg.eval_every
+            save_state()
+            if _stop_after is not None and env_steps >= _stop_after:
+                train_log.close()
+                return {"interrupted": True, "env_steps": env_steps}
 
     do_eval("final")
     train_log.close()
     save_checkpoint(out_dir / "last.pt", online, cfg, {"env_steps": env_steps})
+    for f in (state_path, replay_path):  # finished: the resume state is no longer needed
+        f.unlink(missing_ok=True)
     summary = {"best_val_score": best_val, "best_env_steps": best_step, "updates": updates,
                "minutes": (time.time() - t0) / 60}
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=1))

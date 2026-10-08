@@ -50,7 +50,7 @@ def cmd_train(a):
     name = a.name or f"{cfg.arch}_s{cfg.seed}"
     out = RESULTS / "runs" / name
     print(f"training {name} -> {out}\n{cfg}", flush=True)
-    print(json.dumps(train(cfg, out, log=lambda m: print(m, flush=True))))
+    print(json.dumps(train(cfg, out, log=lambda m: print(m, flush=True), resume=not a.no_resume)))
 
 
 def cmd_eval_model(a):
@@ -156,6 +156,7 @@ def main():
                  ("seed", int), ("threads", int), ("lr", float), ("gamma", float), ("tau", float),
                  ("eps_end", float), ("eps_frac", float)]:
         p.add_argument(f"--{k}", type=t)
+    p.add_argument("--no-resume", action="store_true", help="ignore resume.pt and start from scratch")
     p.add_argument("--no-double", dest="double", action="store_false", default=None)
     p.add_argument("--no-dueling", dest="dueling", action="store_false", default=None)
     p.set_defaults(fn=cmd_train)

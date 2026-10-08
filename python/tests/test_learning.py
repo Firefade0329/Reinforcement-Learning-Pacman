@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pytest
 import torch
@@ -7,6 +9,8 @@ from pacman_rl.env import FIELD_SHAPE, OBS_SHAPE, STANDARD, PacmanEnv
 from pacman_rl.features import FEATURE_DIM, NUM_TABULAR_STATES, feature_vector, tabular_state
 from pacman_rl.models import ARCHS, build_model, receptive_field
 from pacman_rl.replay import NStepReplay
+
+REPO = Path(__file__).resolve().parents[2]
 
 
 def test_nstep_return_and_terminal_handling():
@@ -233,3 +237,48 @@ def test_uint8_replay_roundtrip_matches_float_observations():
     b = ref.sample(16, np.random.default_rng(1))
     assert float((a[0] - b[0]).abs().max()) < 1e-6 and float((a[3] - b[3]).abs().max()) < 1e-6
     assert torch.equal(a[1], b[1]) and torch.equal(a[2], b[2])
+
+
+def test_training_resumes_after_interruption(tmp_path):
+    """Kill-and-restart: an interrupted run continues from its last eval boundary and completes."""
+    import json
+
+    from pacman_rl.dqn import TrainConfig, load_checkpoint, train
+
+    cfg = TrainConfig(arch="cnn2", total_env_steps=640, learn_start=64, eval_every=160, n_envs=4, buffer=2000,
+                      batch=8, seed=1)
+    first = train(cfg, tmp_path, log=lambda *_: None, _stop_after=320)
+    assert first["interrupted"] and (tmp_path / "resume.pt").exists() and not (tmp_path / "last.pt").exists()
+    msgs = []
+    out = train(cfg, tmp_path, log=msgs.append)
+    assert any("[resume]" in m and "env_steps=320" in m for m in msgs)
+    assert (tmp_path / "last.pt").exists() and not (tmp_path / "resume.pt").exists()
+    rows = [json.loads(x) for x in (tmp_path / "train_log.jsonl").read_text().splitlines()]
+    evals = [r["env_steps"] for r in rows if r["type"] == "eval"]
+    assert evals == sorted(evals) and evals[-1] == 640 and 320 in evals  # one continuous log
+    _, cfg2, ck = load_checkpoint(tmp_path / "last.pt")
+    assert ck["env_steps"] == 640
+
+
+def test_resume_ignores_state_from_a_different_config(tmp_path):
+    from pacman_rl.dqn import TrainConfig, train
+
+    base = dict(arch="cnn2", total_env_steps=320, learn_start=64, eval_every=160, n_envs=4, buffer=2000, batch=8)
+    train(TrainConfig(seed=1, **base), tmp_path, log=lambda *_: None, _stop_after=160)
+    msgs = []
+    train(TrainConfig(seed=2, **base), tmp_path, log=msgs.append)
+    assert any("does not match" in m for m in msgs)
+
+
+def test_stale_lock_is_taken_over(tmp_path, monkeypatch):
+    import importlib.util
+    import sys
+
+    spec = importlib.util.spec_from_file_location("run_experiments", REPO / "python" / "scripts" / "run_experiments.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    run = tmp_path / "r"
+    run.mkdir()
+    assert mod.take_lock(run) and not mod.take_lock(run)  # held by this (alive) process
+    (run / ".lock" / "pid").write_text("999999999")      # owner that does not exist
+    assert mod.take_lock(run)                              # stale -> taken over
