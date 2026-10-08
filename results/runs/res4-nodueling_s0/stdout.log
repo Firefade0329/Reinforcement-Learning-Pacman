@@ -1,2 +1,12 @@
 training res4-nodueling_s0 -> /home/user/Reinforcement-Learning-Pacman/results/runs/res4-nodueling_s0
 TrainConfig(arch='res4', obs='fields', width=16, double=True, dueling=False, n_step=3, gamma=0.99, lr=0.0005, batch=32, buffer=100000, learn_start=4000, n_envs=8, steps_per_update=4, total_env_steps=120000, tau=0.01, eps_start=1.0, eps_end=0.05, eps_frac=0.4, grad_clip=10.0, eval_every=20000, seed=0, threads=1, device='cpu')
+[val] steps=20000 updates=3998 val_score=24.0 death=1.00 win=0.00 (7.9 min)
+[val] steps=40000 updates=8998 val_score=39.8 death=1.00 win=0.00 (17.1 min)
+[val] steps=60000 updates=13998 val_score=84.4 death=1.00 win=0.00 (26.4 min)
+[val] steps=80000 updates=18998 val_score=104.0 death=1.00 win=0.00 (35.8 min)
+[val] steps=100000 updates=23998 val_score=150.3 death=1.00 win=0.00 (45.7 min)
+[val] steps=120000 updates=28998 val_score=149.7 death=1.00 win=0.00 (55.3 min)
+[final] steps=120000 updates=28998 val_score=149.7 death=1.00 win=0.00 (55.7 min)
+{"best_val_score": 150.28, "best_env_steps": 100000, "updates": 28998, "minutes": 55.67989498774211}
+res4-nodueling_s0 standard/test: score 171.6 [161.8, 181.3]  death 1.00  win 0.00  steps 277
+res4-nodueling_s0 hard/test: score 68.5 [63.2, 74.1]  death 1.00  win 0.00  steps 81

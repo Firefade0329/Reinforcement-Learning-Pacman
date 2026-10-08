@@ -1,2 +1,12 @@
 training res4-nodouble_s1 -> /home/user/Reinforcement-Learning-Pacman/results/runs/res4-nodouble_s1
 TrainConfig(arch='res4', obs='fields', width=16, double=False, dueling=True, n_step=3, gamma=0.99, lr=0.0005, batch=32, buffer=100000, learn_start=4000, n_envs=8, steps_per_update=4, total_env_steps=120000, tau=0.01, eps_start=1.0, eps_end=0.05, eps_frac=0.4, grad_clip=10.0, eval_every=20000, seed=1, threads=1, device='cpu')
+[val] steps=20000 updates=3998 val_score=16.2 death=1.00 win=0.00 (6.7 min)
+[val] steps=40000 updates=8998 val_score=29.6 death=1.00 win=0.00 (14.2 min)
+[val] steps=60000 updates=13998 val_score=66.6 death=1.00 win=0.00 (21.9 min)
+[val] steps=80000 updates=18998 val_score=69.5 death=1.00 win=0.00 (29.6 min)
+[val] steps=100000 updates=23998 val_score=104.1 death=1.00 win=0.00 (37.4 min)
+[val] steps=120000 updates=28998 val_score=83.0 death=1.00 win=0.00 (45.6 min)
+[final] steps=120000 updates=28998 val_score=83.0 death=1.00 win=0.00 (46.0 min)
+{"best_val_score": 104.06, "best_env_steps": 100000, "updates": 28998, "minutes": 45.97139373222987}
+res4-nodouble_s1 standard/test: score 100.4 [92.6, 108.4]  death 1.00  win 0.00  steps 158
+res4-nodouble_s1 hard/test: score 37.1 [34.3, 40.2]  death 1.00  win 0.00  steps 45
