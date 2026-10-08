@@ -77,7 +77,7 @@ Original Java agent run headless (150 games, no seeds): mean score 160.5 [143.9,
 
 ## 7. 验收门槛判定(`check_acceptance.py --run-tests` 输出)
 ```
-M1  MUST   PASS      45 passed, 1 skipped in 31.05s
+M1  MUST   PASS      45 passed, 1 skipped in 29.84s
 M3  MUST   PASS      baselines random/greedy-bfs/legacy/safe-heuristic + tabular x3 seeds present
 M4  MUST   PASS      final arch=mlp (chosen on val). score: diff +82.3 [95% CI +68.9, +95.7]; death (legacy - deep): diff +0.2 [95% CI +0.1, +0.2]; per-seed means [246.1, 241.3, 219.7] vs legacy 153.4
 M5  MUST   PASS      score vs tabular: diff +155.3 [95% CI +146.3, +164.5]

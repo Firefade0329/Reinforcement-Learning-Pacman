@@ -17,7 +17,7 @@ SEEDS = (0, 1, 2)
 ARCHS = ("mlp", "cnn2", "res2", "res4", "res8")
 BASELINES = ("random", "greedy-bfs", "legacy", "safe-heuristic")
 ABLATION_ARCH = "res4"  # algorithm ablations run on this architecture (fixed a priori)
-JAVA_BASE_COMMIT = "5d5efd5"  # repository HEAD before any Python work started
+JAVA_BASE_COMMIT = "1e9da5c"  # repository HEAD before any Python work started (hash after the 2026-10-08 history rewrite; was 5d5efd5)
 
 
 def load(path: Path):

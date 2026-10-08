@@ -33,7 +33,7 @@ pip install -r python/requirements.txt          # numpy, torch (CPU 即可), mat
 3. **查泄漏**:
    - `python/pacman_rl/evaluate.py` 中测试种子 `10000–10299` 与验证种子 `5000–5049`、训练种子(≥ 1,000,000)互不相交(测试里有断言);
    - `dqn.py` 的 `train()` 只使用验证集挑 checkpoint;测试集只由 `cli eval-model --split test` 在训练结束后使用。
-4. **查旧代码**:`git diff 5d5efd5 -- ReinforcementLearning HumanPlayGame DijkstraPathFinding '*.java' Images data/QTable.txt` 为空。
+4. **查旧代码**:`git diff 1e9da5c -- ReinforcementLearning HumanPlayGame DijkstraPathFinding '*.java' Images data/QTable.txt ':(exclude,glob)**/.DS_Store'` 为空(`.DS_Store` 是 macOS 垃圾文件,已按所有者要求删除,排除在比较之外)。
 5. **读局限**:`docs/RESULTS.md` 末尾和 `PLAN.md` 第 9 节"偏差记录",确认没有被隐藏的失败或事后改门槛。
 
 ## D. 验收结论模板

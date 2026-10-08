@@ -10,6 +10,7 @@
 
 ### 0. 项目背景(先读完再动手)
 - 仓库:GitHub 上我名下的私有仓库 `Firefade0329/Reinforcement-Learning-Pacman`。工作分支:`claude/sleepy-knuth-9pl6y5`(不是 main)。
+- **重要:仓库的 git 历史在 2026-10-08 被改写过(为清理个人信息),所有提交哈希都变了。** 如果这台电脑上已经有一份旧克隆,**不要从那份旧克隆里 `git push`、`git pull` 或 `git merge` 任何东西**,否则会把旧提交重新传上去。新克隆没有这个问题。
 - 项目是一个 Pacman 强化学习升级:Python 复刻了原 Java 游戏,并比较从随机、手写规则、表格 Q-learning 到 MLP/CNN/ResNet-DQN 的一系列智能体。
 - 开工前请完整阅读:`docs/PLAN.md`(方案、验收门槛、偏差记录)、`docs/ACCEPTANCE.md`、`python/README.md`(尤其 "Training on a GPU" 一节)。
 - 云端那边已经跑出来的 12 万步 CPU 结果在 `results/`,**不要改动、不要覆盖**。你这次跑的是 **GPU、更长步数(默认 30 万步)的补充实验**,结果写到独立目录 `results_gpu/`,两者不要混在一起。
@@ -54,7 +55,11 @@
 全部跑完(或你判断无法继续)后:
 1. 运行 `python scripts/make_report.py`(在 `python/` 目录下,`PACMAN_RESULTS_DIR` 指向 `results_gpu`,报告会写到 `results_gpu/RESULTS.md`),再运行 `python scripts/check_acceptance.py`,保存输出。
 2. 写一份 `results_gpu/LOCAL_RUN_REPORT.md`,包含:机器信息(GPU、驱动、CUDA、PyTorch 版本、CPU 核数、内存)、bench 对比表、实际用的步数和并行数、每个运行是否完成、测试集成绩表(对比上面的参考数字)、遇到的问题和处理、哪些运行是被中断后续训完成的。**如实写,有失败就写失败,不要美化。**
-3. 新建分支 `local/gpu-longrun`,只提交 `results_gpu/`(JSON、日志、最终 `best.pt`/`last.pt`、报告、图),推送该分支。**不要推到 `claude/sleepy-knuth-9pl6y5`。** 把推送后的分支名和提交号告诉我。
+3. **交付结果的正确做法(直接放进仓库的新分支,不要通过旧克隆推送)**:
+   a. 把 `results_gpu/`(以及第二遍的 `results_gpu_nstep1/`,如果有)整个目录拷到仓库目录之外的安全位置;训练仍在写入时不要拷,等全部结束。
+   b. 在另一个空目录里**重新克隆**仓库(这样拿到的是改写后的新历史),设置第 1 节第 2 步的本地 git 身份,然后 `git checkout -b local/gpu-longrun origin/claude/sleepy-knuth-9pl6y5`。
+   c. 把拷出来的结果目录放进这个新克隆,只提交 `results_gpu/`(JSON、日志、最终 `best.pt`/`last.pt`、报告、图),推送 `local/gpu-longrun`(第二遍用 `local/gpu-longrun-nstep1`)。**不要推到 `claude/sleepy-knuth-9pl6y5`,不要强制推送。**
+   d. 推送后用 `git log -1 --format='%an <%ae>'` 确认身份,并把分支名和提交号告诉我。云端的 Claude 之后会直接从这个分支读取结果并并入最终报告。
 4. 另外把 `results_gpu/` 打成 `results_gpu.zip` 放在仓库目录之外,方便我直接上传给云端那边的 Claude。
 
 ### 5. 完成后向我汇报(简洁)
@@ -66,6 +71,6 @@
 
 1. **云端实验**:云端的 12 万步 CPU 矩阵仍在跑(有断点续训,被挂起后需要唤醒会话让它接着跑)。跑完后云端会生成 `docs/RESULTS.md`,运行验收脚本,并给出结论。
 2. **合并两套结果**:GPU 长训练是补充实验。把 `local/gpu-longrun` 的结果(或 `results_gpu.zip`)交给云端的 Claude,写入最终报告,对照"12 万步 vs 30 万步"下卷积网络深度的结论。
-3. **历史改写(隐私)**:实验结束后,先重新备份,再把所有提交(含本地分支那一个)的作者统一成 noreply 身份、替换历史文件内容里的真实姓名和旧用户名、清理提交信息;**云端会先把方案和新旧哈希对照表给我确认,再强制推送**。本地分支 `local/gpu-longrun` 的那个结果提交会在改写后用 cherry-pick 重新挂到新历史上。
+3. **历史改写(隐私)**:已于 2026-10-08 完成并在线上验证过(所有提交的作者统一为 noreply 身份,个人邮箱/真实姓名/旧用户名在历史里为 0)。笔记本上如果有旧克隆,请重新克隆;结果按上面第 4 节第 3 步用新克隆交付。
 4. **收尾**:把清理分支和工作分支合并进 `main`、删除多余分支;更新根 README(中英文)说明新旧两套代码与运行方法;为最终智能体生成回放 GIF(`python -m pacman_rl.cli replay`),人工看一眼行为是否合理;跑 `bash python/scripts/acceptance.sh --quick` 做最终冒烟。
 5. **隐私收尾**:历史改写完成后再决定是否把仓库改回公开;在 GitHub 邮箱设置里开启 "Keep my email addresses private" 和 "Block command line pushes that expose my email"。

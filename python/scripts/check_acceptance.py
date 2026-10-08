@@ -82,7 +82,7 @@ def main(run_tests: bool):
     # ---- M7 Java untouched -------------------------------------------------------------
     r = subprocess.run(["git", "diff", "--stat", L.JAVA_BASE_COMMIT, "--", "ReinforcementLearning", "HumanPlayGame",
                         "DijkstraPathFinding", "Pacman.java", "PacmanRL.java", "PacmanDijkstra.java", "Images",
-                        "data/QTable.txt"], cwd=L.ROOT, capture_output=True, text=True)
+                        "data/QTable.txt", ":(exclude,glob)**/.DS_Store"], cwd=L.ROOT, capture_output=True, text=True)
     add("M7", "MUST", "PASS" if r.returncode == 0 and not r.stdout.strip() else "FAIL",
         "no changes to Java sources / images / Q-table since base commit" if not r.stdout.strip() else r.stdout.strip()[:200])
 
