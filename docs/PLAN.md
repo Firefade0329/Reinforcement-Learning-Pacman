@@ -1,0 +1,157 @@
+# Pacman 强化学习升级方案与验收流程
+
+> 状态:v1(实施前定稿)。验收门槛在本文件提交时即固定;实施中若需调整,必须写入第 9 节"偏差记录",不得静默修改。
+
+## 1. 目标
+
+把 2023 年的 Java 版 Pacman(4 状态表格 Q-Learning + 手写躲避规则)升级为:
+
+1. **可复现的 Python 实验平台**:忠实移植原游戏规则,带统一评估协议。
+2. **更深的神经网络智能体**:从 MLP → CNN → 残差 CNN,配合 Double / Dueling / n-step DQN,**用消融实验证明"深度"和"算法改进"各自是否有用**,而不是默认"越深越好"。
+3. **可验收**:每一步有命令、有量化门槛、有自动检查脚本。
+
+原 Java 代码**保持原位不动**(它依赖相对路径 `Images/`、`data/`),新代码全部放在 `python/` 和 `docs/` 下。
+
+## 2. 现状诊断(已核实的事实)
+
+| 项 | 事实 | 对方案的影响 |
+|---|---|---|
+| 地图 | 32×24,378 个可走格,**每格一个金豆**(出生格除外,最多吃 377 个),无死胡同,全连通 | 固定地图;可预计算全对最短路 |
+| 幽灵 | 3 个;`nextInt(10) > 2` ⇒ **70% 随机走、仅 30% 追击**;不掉头 | 比 README 暗示的更弱;需另设"强追击"场景测泛化 |
+| 终局 | 同格碰撞即输(Pacman 动后、幽灵动后各检查一次);吃光获胜;1000 步截断 | 环境照搬 |
+| 状态 | 只有"最近金豆的 BFS 方向"(4 状态);`QLearning.java` 注释里的 64 状态版本**未实现** | 表格基线补做 64 状态 |
+| 躲避 | **完全是手写规则**(5 格内有幽灵则固定逃跑),且逃跑时跳过 Q 更新;还有 bug:`closestGhost` 取的是循环里**最后一个**近距幽灵而非最近的 | 旧策略 = "BFS 吃豆 + 手写逃跑",作为 `legacy` 基线精确复刻(含该 quirk) |
+| Q 更新 | `normalize()` 把每个状态的 Q 值除以其和,破坏 Bellman 含义;`alpha=1` | 新实现用标准 Q-Learning,对照旧实现 |
+| 数据 | `Reward.txt` 22 局,`Score.txt` 51 局(后期大量 5~60 分的退化局),最高 372 | 仅作旧实现的参考,不作为评估集 |
+
+## 3. 技术路线与目录
+
+- 语言/库:Python 3.13、NumPy、PyTorch(CPU)、matplotlib、pytest。环境自实现 `reset/step` 接口(与 Gymnasium 同形),不强依赖 gymnasium/pygame。
+- 云环境无 GPU(4 核 CPU),**网络结构和训练预算按 CPU 可承受设计**;预算在里程碑 R1 实测校准。
+
+```
+python/
+  requirements.txt
+  pacman_rl/
+    maps.py        # 地图 + 全对最短路预计算
+    env.py         # PacmanEnv:规则、观测、奖励
+    features.py    # 工程特征(MLP/表格用)
+    baselines.py   # random / greedy-BFS / legacy / safe-heuristic
+    tabular.py     # 标准 Q-Learning(64 状态)
+    models.py      # MLP / CNN / ResNet(+Dueling 头)
+    replay.py      # n-step 回放
+    dqn.py         # Double DQN 训练器
+    evaluate.py    # 统一评估(种子、CI、配对检验)
+    render.py      # 轨迹 -> GIF
+    cli.py
+  tests/
+  scripts/         # run_all.sh / acceptance.sh / check_acceptance.py / make_report.py
+results/           # 原始 JSON(逐局记录)、曲线、checkpoint(小)
+docs/              # PLAN.md  ACCEPTANCE.md  RESULTS.md(脚本生成)
+```
+
+## 4. 环境规范(忠实移植 + 显式偏离)
+
+- 动作 5 个:0 不动,1 右(+1,0),2 下(0,+1),3 左(-1,0),4 上(0,-1)。撞墙 = 原地不动。
+- 起点:Pacman 与 3 个幽灵在可走格随机(幽灵不与 Pacman 同格),出生格金豆清除。
+- 回合流程:Pacman 移动 → 吃豆 → 碰撞检查 → 幽灵移动 → 碰撞检查 → 胜利检查。截断 1000 步。
+- 幽灵:候选方向排除掉头;以 `chase_prob`(默认 0.3)选"到 Pacman 欧氏距离最小"的方向,否则随机。
+- **偏离**:仅当幽灵无路可走时才允许掉头(原代码此时会抛异常;本地图无死胡同,故实际不触发)。
+- 奖励(训练用,与评估指标分离):金豆 +1,死亡 −10,通关 +10,每步 −0.01。**不使用**原版的"距离最近金豆变近 ±0.1"塑形(它依赖最近金豆会跳变,不是势函数)。
+- 观测:`(5, 24, 32)` float:墙、金豆、Pacman、幽灵、上一步幽灵位置(提供幽灵朝向)。
+- 场景:`standard`(默认规则)与 `hard`(`chase_prob=0.7`,训练不见,仅测泛化)。
+
+## 5. 算法阶梯与深度提升
+
+| 级别 | 智能体 | 作用 |
+|---|---|---|
+| L0 | `random` | 下限 |
+| L1 | `greedy-bfs` 只吃豆不躲 | 无躲避的上限参考 |
+| L2 | `legacy` 复刻 Java:BFS 方向 + 手写逃跑(含 quirk);并用 `data/QTable.txt` 第 21 行验证其与 BFS 等价 | **要超越的旧版本** |
+| L3 | `safe-heuristic` 强手写:BFS 吃豆但避开幽灵威胁区 | 判断 RL 是否真比"认真写规则"强 |
+| L4 | 标准表格 Q-Learning,64 状态(豆方向×幽灵方位),**躲避也由学习得到** | 修正旧实现、补完注释中的设计 |
+| L5 | MLP-DQN(工程特征,~2×128) | 神经网络起点 |
+| L6 | CNN-DQN(2 层卷积 + 全连接) | 引入空间观测 |
+| L7 | **ResNet-DQN**(N 个残差块,N∈{2,4,8})+ Double + Dueling + n-step(n=3) | 深度提升主线 |
+
+深度提升的设计依据:地图宽 32,单步 3×3 卷积感受野只扩 2 格,**N=8 时(16 层卷积)感受野 ≈ 33,恰好覆盖整图**——这是"需要深度才能做全局路径规划"的可检验假设。头部先 1×1 降维再展平(不做全局平均池化,以保留位置信息)。
+
+训练算法:Double DQN、Dueling、n-step 回报(n=3,γ=0.99)、Huber 损失、Adam、梯度裁剪、目标网络软更新、多环境并行采样、ε 线性退火。优先实现以上;**PER、Noisy Net、PPO 列为选做**,仅在主线验收后且预算允许时做。
+
+**消融矩阵**(≥3 个随机种子/格):
+- 深度:MLP / CNN-小 / ResNet-2 / ResNet-4 / ResNet-8(同等训练步数)
+- 算法:ResNet-最佳深度上逐项关闭 Double / Dueling / n-step(n=1)
+
+## 6. 评估协议(杜绝泄漏与自说自话)
+
+- **种子划分**:训练流 0–99999;验证 5000–5049(仅用于选 checkpoint);**测试 10000–10299(300 局),仅在最终评估时使用一次**。
+- 所有智能体在相同测试种子(相同起点)上评估 ⇒ 可做**配对**比较。
+- 指标(与训练奖励无关):**平均得分**(吃豆数,0–377)、**通关率**、**死亡率**、平均存活步数。主指标:平均得分;次指标:死亡率。
+- 统计:每个指标给 95% bootstrap CI;智能体间比较用配对 bootstrap 差值 CI。RL 结果报告 3 个训练种子的均值±标准差,并列出逐种子数值。
+- 每局原始记录落盘到 `results/*.json`,报告只能由脚本从这些文件生成。
+
+## 7. 里程碑与验收门槛
+
+每个里程碑结束:测试通过 → 提交并推送 → 在 `docs/RESULTS.md` 增量记录。
+
+| # | 里程碑 | 交付物 | 验证 | 通过标准 |
+|---|---|---|---|---|
+| R0 | 方案 | 本文件 | 评审 | 已提交 |
+| R1 | 环境与算力校准 | `maps.py` `env.py` + 测试;CPU 训练速度实测 | `pytest python/tests/test_env.py` | 全部通过(见 8.1);训练预算写入 9 节 |
+| R2 | 基线与评估框架 | L0–L3、`evaluate.py` | `cli eval --agent ...` | 基线表生成;`legacy` 与 Java 数据做**合理性核对**(报告,不设硬门槛——旧数据训练状态不明) |
+| R3 | 表格 Q | L4 | 训练+评估 | 配对 CI 显著优于 random;与 `legacy` 对比如实报告 |
+| R4 | DQN 基础设施 | L5–L7 代码、回放、训练器 | 单元测试 + 冒烟训练 | 小预算下 loss 下降、eval 得分高于 random;checkpoint 可复载且评估结果逐位一致 |
+| R5 | 消融 | 深度 × 算法矩阵 | `scripts/run_all.sh` | 每格 ≥3 种子,表格由脚本生成 |
+| R6 | 最终评估与报告 | 测试集成绩、GIF、`RESULTS.md`、README | `check_acceptance.py` | 见下 |
+
+### 最终验收门槛
+
+**必须通过(MUST)**
+- M1 `pytest` 全绿,包含:Python 地图与 `Game.java` 源码**逐格一致**、金豆数 378/可吃 377、幽灵永不入墙且不掉头、碰撞/通关/截断逻辑、同种子完全确定。
+- M2 `acceptance.sh --quick` 在干净环境 10 分钟内跑完;同一 checkpoint 评估两次指标逐位相同。
+- M3 基线表(L0–L3)与表格 Q(L4)完成,带 CI。
+- M4 **最终深度智能体在测试集上优于 `legacy`**:平均得分的配对差值 95% CI 下界 > 0,且死亡率更低(配对 CI 下界 > 0 的方向)。
+- M5 最终深度智能体优于 L4 表格 Q(平均得分,配对 CI 下界 > 0)。
+- M6 消融矩阵每格 ≥3 种子,所有报告数字由 `make_report.py` 从 `results/*.json` 生成。
+- M7 Java 原代码零改动(`git diff <base> -- '*.java' Images data/QTable.txt` 为空);README 说明新旧两套的运行方法。
+
+**期望达成(SHOULD,未达成须在报告中如实写出差距与原因,不算验收失败)**
+- S1 深度智能体对 `safe-heuristic` 不劣于 −3%(平均得分)。
+- S2 ResNet-最佳深度 显著优于 CNN-小(配对 CI 下界 > 0);若不成立,报告"深度在本任务无收益"的结论及证据。
+- S3 `hard` 场景下,深度智能体相对 `legacy` 的优势保持。
+- S4 感受野假设检验:N=2/4/8 的得分趋势与"感受野覆盖整图"的预测是否一致。
+
+## 8. 验收流程
+
+### 8.1 自动验收(任何人可复现)
+```bash
+pip install -r python/requirements.txt
+python -m pytest python/tests -q                    # M1
+bash python/scripts/acceptance.sh --quick           # M2:小预算冒烟(环境→基线→训练数百步→复载评估)
+python python/scripts/check_acceptance.py           # 读取 results/,逐条输出 PASS / FAIL / REPORTED
+```
+完整复现(数小时 CPU):`bash python/scripts/run_all.sh`。`check_acceptance.py` 对 M3–M7、S1–S4 输出表格;任何 MUST 为 FAIL 则退出码非 0。
+
+### 8.2 人工复核清单(`docs/ACCEPTANCE.md`)
+1. 打开 `results/replays/*.gif`:训练前(随机)、legacy、最终智能体三段,肉眼确认行为合理(会躲幽灵、不原地抖动)。
+2. 抽查 `results/*.json` 中任意一局的逐步记录,与 `RESULTS.md` 的数字对得上。
+3. 确认测试种子只在最终评估中出现(检查 `train.py` 的种子来源与日志)。
+4. 阅读 `RESULTS.md` 的"未达成项与局限"一节,确认没有被隐藏的失败。
+
+## 9. 风险、预算与偏差记录
+
+| 风险 | 应对 |
+|---|---|
+| CPU 训练太慢 | R1 实测每次更新耗时,据此定步数;优先缩小宽度/回放容量而非砍种子数;长任务后台运行,断点 checkpoint 并推送 |
+| 深度无收益 | 这是合法结论,按 S2 如实报告 |
+| 单图过拟合(只有一张地图) | 随机起点已提供状态多样性;用 `hard` 场景测分布外;不声称"泛化到任意地图" |
+| 云容器被回收 | 每个里程碑提交推送;checkpoint 和原始 JSON 入库(体积小) |
+| 依赖安装受限(pytorch.org 被拦) | 使用 PyPI 的 torch(含 CUDA 依赖,体积大但可用) |
+
+**偏差记录**(实施中追加,格式:日期 / 改了什么 / 为什么):
+
+- (空)
+
+## 10. 不在范围内
+
+多地图泛化、Web/GUI 实时对战、PPO/PER 等选做项(主线验收后再议)、修改原 Java 代码。
