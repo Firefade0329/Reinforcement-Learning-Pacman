@@ -21,7 +21,9 @@ cp ../results/reference/java_legacy.json "$PACMAN_RESULTS_DIR/reference/"
 $PY scripts/run_experiments.py baselines
 $PY scripts/run_experiments.py tabular
 $PY scripts/run_experiments.py depth
-$PY scripts/run_experiments.py algo_mlp
-$PY scripts/run_experiments.py algo
+if [[ -z "${PACMAN_SKIP_ALGO:-}" ]]; then
+  $PY scripts/run_experiments.py algo_mlp
+  $PY scripts/run_experiments.py algo
+fi
 $PY scripts/make_report.py                                   # -> $PACMAN_RESULTS_DIR/RESULTS.md
 $PY scripts/check_acceptance.py

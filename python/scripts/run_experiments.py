@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -24,6 +25,7 @@ SEEDS = (0, 1, 2)
 ARCHS = ("mlp", "cnn2", "res2", "res4", "res8")
 DEVICE = os.environ.get("PACMAN_DEVICE", "cpu")      # cpu | cuda | auto (conv nets only; the MLP stays on CPU)
 WORKERS = int(os.environ.get("PACMAN_WORKERS", "4"))
+EXTRA = shlex.split(os.environ.get("PACMAN_TRAIN_EXTRA", ""))  # e.g. "--n_step 1" appended to every train call
 ABLATION_ARCH = "res4"  # fixed a priori (middle depth, affordable); see PLAN.md section 9, deviation 4
 STEPS = int(os.environ.get("PACMAN_STEPS", "120000"))  # env transitions per run; see docs/PLAN.md section 9 for the budget rationale
 
@@ -76,7 +78,7 @@ def run_one(name: str, train_args: list):
         log.unlink(missing_ok=True)
     print(f"{'resume' if resuming else 'start'} {name}", flush=True)
     dev = ["--device", DEVICE] if "mlp" not in map(str, train_args) else []
-    rc = sh(["train", "--name", name, *train_args, *dev], log)
+    rc = sh(["train", "--name", name, *train_args, *EXTRA, *dev], log)
     if rc == 0:
         # final evaluation: checkpoint selected on VAL, reported on TEST (never used for selection)
         rc = sh(["eval-model", "--ckpt", run / "best.pt", "--split", "test", "--scenarios", "standard", "hard", *dev], log)

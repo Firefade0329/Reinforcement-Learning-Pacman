@@ -1,0 +1,12 @@
+training res4raw_s0 -> /home/user/Reinforcement-Learning-Pacman/results/runs/res4raw_s0
+TrainConfig(arch='res4', obs='grid', width=16, double=True, dueling=True, n_step=3, gamma=0.99, lr=0.0005, batch=32, buffer=100000, learn_start=4000, n_envs=8, steps_per_update=4, total_env_steps=120000, tau=0.01, eps_start=1.0, eps_end=0.05, eps_frac=0.4, grad_clip=10.0, eval_every=20000, seed=0, threads=1, device='cpu')
+[val] steps=20000 updates=3998 val_score=23.6 death=1.00 win=0.00 (7.6 min)
+[val] steps=40000 updates=8998 val_score=42.0 death=1.00 win=0.00 (16.4 min)
+[val] steps=60000 updates=13998 val_score=57.4 death=1.00 win=0.00 (25.8 min)
+[val] steps=80000 updates=18998 val_score=90.7 death=1.00 win=0.00 (35.4 min)
+[val] steps=100000 updates=23998 val_score=122.2 death=1.00 win=0.00 (44.9 min)
+[val] steps=120000 updates=28998 val_score=100.4 death=1.00 win=0.00 (54.4 min)
+[final] steps=120000 updates=28998 val_score=100.4 death=1.00 win=0.00 (54.7 min)
+{"best_val_score": 122.18, "best_env_steps": 100000, "updates": 28998, "minutes": 54.65883193810781}
+res4raw_s0 standard/test: score 112.5 [105.4, 119.9]  death 1.00  win 0.00  steps 166
+res4raw_s0 hard/test: score 44.7 [40.9, 48.5]  death 1.00  win 0.00  steps 54

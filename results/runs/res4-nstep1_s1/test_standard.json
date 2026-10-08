@@ -1,0 +1,2136 @@
+{
+ "agent": "res4-nstep1_s1",
+ "scenario": "standard",
+ "split": "test",
+ "env_config": {
+  "num_ghosts": 3,
+  "chase_prob": 0.3,
+  "max_steps": 1000,
+  "r_gold": 1.0,
+  "r_death": -10.0,
+  "r_win": 10.0,
+  "r_step": -0.01
+ },
+ "summary": {
+  "episodes": 300,
+  "score_mean": 197.48666666666668,
+  "score_ci": [
+   187.04316666666665,
+   207.86
+  ],
+  "score_median": 197.0,
+  "death_rate": 0.9133333333333333,
+  "death_ci": [
+   0.88,
+   0.9433333333333334
+  ],
+  "win_rate": 0.0,
+  "win_ci": [
+   0.0,
+   0.0
+  ],
+  "steps_mean": 446.8666666666667
+ },
+ "records": [
+  {
+   "seed": 10000,
+   "score": 147,
+   "steps": 184,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10001,
+   "score": 312,
+   "steps": 887,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10002,
+   "score": 331,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10003,
+   "score": 54,
+   "steps": 114,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10004,
+   "score": 261,
+   "steps": 540,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10005,
+   "score": 153,
+   "steps": 252,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10006,
+   "score": 244,
+   "steps": 562,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10007,
+   "score": 239,
+   "steps": 568,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10008,
+   "score": 298,
+   "steps": 708,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10009,
+   "score": 261,
+   "steps": 616,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10010,
+   "score": 100,
+   "steps": 127,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10011,
+   "score": 219,
+   "steps": 469,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10012,
+   "score": 126,
+   "steps": 212,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10013,
+   "score": 284,
+   "steps": 552,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10014,
+   "score": 145,
+   "steps": 204,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10015,
+   "score": 257,
+   "steps": 487,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10016,
+   "score": 201,
+   "steps": 348,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10017,
+   "score": 238,
+   "steps": 500,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10018,
+   "score": 183,
+   "steps": 351,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10019,
+   "score": 186,
+   "steps": 405,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10020,
+   "score": 328,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10021,
+   "score": 213,
+   "steps": 468,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10022,
+   "score": 156,
+   "steps": 244,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10023,
+   "score": 245,
+   "steps": 663,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10024,
+   "score": 20,
+   "steps": 35,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10025,
+   "score": 108,
+   "steps": 198,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10026,
+   "score": 42,
+   "steps": 51,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10027,
+   "score": 342,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10028,
+   "score": 331,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10029,
+   "score": 288,
+   "steps": 697,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10030,
+   "score": 267,
+   "steps": 496,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10031,
+   "score": 323,
+   "steps": 912,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10032,
+   "score": 109,
+   "steps": 151,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10033,
+   "score": 336,
+   "steps": 972,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10034,
+   "score": 71,
+   "steps": 138,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10035,
+   "score": 247,
+   "steps": 552,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10036,
+   "score": 196,
+   "steps": 304,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10037,
+   "score": 120,
+   "steps": 209,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10038,
+   "score": 120,
+   "steps": 223,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10039,
+   "score": 325,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10040,
+   "score": 252,
+   "steps": 688,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10041,
+   "score": 179,
+   "steps": 343,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10042,
+   "score": 298,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10043,
+   "score": 294,
+   "steps": 479,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10044,
+   "score": 74,
+   "steps": 102,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10045,
+   "score": 312,
+   "steps": 901,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10046,
+   "score": 262,
+   "steps": 525,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10047,
+   "score": 322,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10048,
+   "score": 275,
+   "steps": 733,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10049,
+   "score": 127,
+   "steps": 169,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10050,
+   "score": 172,
+   "steps": 419,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10051,
+   "score": 319,
+   "steps": 777,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10052,
+   "score": 111,
+   "steps": 173,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10053,
+   "score": 319,
+   "steps": 713,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10054,
+   "score": 94,
+   "steps": 127,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10055,
+   "score": 211,
+   "steps": 486,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10056,
+   "score": 301,
+   "steps": 993,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10057,
+   "score": 101,
+   "steps": 276,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10058,
+   "score": 178,
+   "steps": 442,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10059,
+   "score": 70,
+   "steps": 90,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10060,
+   "score": 62,
+   "steps": 129,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10061,
+   "score": 145,
+   "steps": 215,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10062,
+   "score": 35,
+   "steps": 46,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10063,
+   "score": 294,
+   "steps": 730,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10064,
+   "score": 97,
+   "steps": 170,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10065,
+   "score": 99,
+   "steps": 150,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10066,
+   "score": 27,
+   "steps": 42,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10067,
+   "score": 107,
+   "steps": 241,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10068,
+   "score": 238,
+   "steps": 477,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10069,
+   "score": 193,
+   "steps": 364,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10070,
+   "score": 203,
+   "steps": 349,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10071,
+   "score": 314,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10072,
+   "score": 127,
+   "steps": 199,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10073,
+   "score": 132,
+   "steps": 285,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10074,
+   "score": 164,
+   "steps": 343,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10075,
+   "score": 314,
+   "steps": 723,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10076,
+   "score": 84,
+   "steps": 116,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10077,
+   "score": 194,
+   "steps": 335,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10078,
+   "score": 127,
+   "steps": 177,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10079,
+   "score": 157,
+   "steps": 288,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10080,
+   "score": 183,
+   "steps": 289,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10081,
+   "score": 111,
+   "steps": 160,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10082,
+   "score": 74,
+   "steps": 84,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10083,
+   "score": 140,
+   "steps": 239,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10084,
+   "score": 130,
+   "steps": 169,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10085,
+   "score": 57,
+   "steps": 66,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10086,
+   "score": 36,
+   "steps": 56,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10087,
+   "score": 92,
+   "steps": 123,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10088,
+   "score": 236,
+   "steps": 401,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10089,
+   "score": 221,
+   "steps": 449,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10090,
+   "score": 100,
+   "steps": 167,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10091,
+   "score": 97,
+   "steps": 159,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10092,
+   "score": 290,
+   "steps": 747,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10093,
+   "score": 200,
+   "steps": 422,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10094,
+   "score": 209,
+   "steps": 559,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10095,
+   "score": 173,
+   "steps": 318,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10096,
+   "score": 264,
+   "steps": 576,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10097,
+   "score": 161,
+   "steps": 390,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10098,
+   "score": 215,
+   "steps": 430,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10099,
+   "score": 331,
+   "steps": 976,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10100,
+   "score": 263,
+   "steps": 499,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10101,
+   "score": 321,
+   "steps": 939,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10102,
+   "score": 160,
+   "steps": 361,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10103,
+   "score": 313,
+   "steps": 766,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10104,
+   "score": 127,
+   "steps": 211,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10105,
+   "score": 207,
+   "steps": 483,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10106,
+   "score": 279,
+   "steps": 550,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10107,
+   "score": 249,
+   "steps": 609,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10108,
+   "score": 319,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10109,
+   "score": 320,
+   "steps": 980,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10110,
+   "score": 291,
+   "steps": 728,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10111,
+   "score": 264,
+   "steps": 738,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10112,
+   "score": 265,
+   "steps": 621,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10113,
+   "score": 121,
+   "steps": 208,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10114,
+   "score": 206,
+   "steps": 520,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10115,
+   "score": 118,
+   "steps": 148,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10116,
+   "score": 71,
+   "steps": 81,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10117,
+   "score": 191,
+   "steps": 300,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10118,
+   "score": 187,
+   "steps": 330,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10119,
+   "score": 77,
+   "steps": 96,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10120,
+   "score": 112,
+   "steps": 141,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10121,
+   "score": 238,
+   "steps": 462,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10122,
+   "score": 225,
+   "steps": 334,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10123,
+   "score": 309,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10124,
+   "score": 193,
+   "steps": 414,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10125,
+   "score": 146,
+   "steps": 219,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10126,
+   "score": 193,
+   "steps": 410,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10127,
+   "score": 55,
+   "steps": 78,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10128,
+   "score": 79,
+   "steps": 102,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10129,
+   "score": 319,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10130,
+   "score": 288,
+   "steps": 892,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10131,
+   "score": 237,
+   "steps": 425,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10132,
+   "score": 187,
+   "steps": 240,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10133,
+   "score": 227,
+   "steps": 566,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10134,
+   "score": 152,
+   "steps": 246,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10135,
+   "score": 311,
+   "steps": 716,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10136,
+   "score": 231,
+   "steps": 556,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10137,
+   "score": 167,
+   "steps": 332,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10138,
+   "score": 20,
+   "steps": 27,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10139,
+   "score": 160,
+   "steps": 273,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10140,
+   "score": 91,
+   "steps": 125,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10141,
+   "score": 102,
+   "steps": 166,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10142,
+   "score": 311,
+   "steps": 860,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10143,
+   "score": 277,
+   "steps": 768,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10144,
+   "score": 263,
+   "steps": 678,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10145,
+   "score": 116,
+   "steps": 197,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10146,
+   "score": 122,
+   "steps": 343,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10147,
+   "score": 238,
+   "steps": 596,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10148,
+   "score": 333,
+   "steps": 996,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10149,
+   "score": 329,
+   "steps": 977,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10150,
+   "score": 228,
+   "steps": 354,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10151,
+   "score": 329,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10152,
+   "score": 25,
+   "steps": 50,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10153,
+   "score": 125,
+   "steps": 200,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10154,
+   "score": 340,
+   "steps": 829,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10155,
+   "score": 95,
+   "steps": 133,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10156,
+   "score": 319,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10157,
+   "score": 168,
+   "steps": 334,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10158,
+   "score": 82,
+   "steps": 118,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10159,
+   "score": 296,
+   "steps": 693,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10160,
+   "score": 196,
+   "steps": 320,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10161,
+   "score": 330,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10162,
+   "score": 331,
+   "steps": 952,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10163,
+   "score": 208,
+   "steps": 413,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10164,
+   "score": 186,
+   "steps": 278,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10165,
+   "score": 98,
+   "steps": 153,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10166,
+   "score": 164,
+   "steps": 364,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10167,
+   "score": 104,
+   "steps": 158,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10168,
+   "score": 237,
+   "steps": 376,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10169,
+   "score": 164,
+   "steps": 309,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10170,
+   "score": 341,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10171,
+   "score": 275,
+   "steps": 608,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10172,
+   "score": 353,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10173,
+   "score": 106,
+   "steps": 179,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10174,
+   "score": 65,
+   "steps": 86,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10175,
+   "score": 142,
+   "steps": 216,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10176,
+   "score": 338,
+   "steps": 999,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10177,
+   "score": 250,
+   "steps": 475,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10178,
+   "score": 155,
+   "steps": 262,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10179,
+   "score": 269,
+   "steps": 492,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10180,
+   "score": 295,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10181,
+   "score": 33,
+   "steps": 39,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10182,
+   "score": 65,
+   "steps": 166,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10183,
+   "score": 208,
+   "steps": 420,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10184,
+   "score": 65,
+   "steps": 107,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10185,
+   "score": 143,
+   "steps": 237,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10186,
+   "score": 150,
+   "steps": 244,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10187,
+   "score": 196,
+   "steps": 282,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10188,
+   "score": 234,
+   "steps": 383,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10189,
+   "score": 318,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10190,
+   "score": 96,
+   "steps": 132,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10191,
+   "score": 236,
+   "steps": 501,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10192,
+   "score": 277,
+   "steps": 613,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10193,
+   "score": 320,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10194,
+   "score": 134,
+   "steps": 188,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10195,
+   "score": 108,
+   "steps": 148,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10196,
+   "score": 278,
+   "steps": 761,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10197,
+   "score": 307,
+   "steps": 801,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10198,
+   "score": 304,
+   "steps": 840,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10199,
+   "score": 259,
+   "steps": 661,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10200,
+   "score": 90,
+   "steps": 134,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10201,
+   "score": 153,
+   "steps": 204,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10202,
+   "score": 273,
+   "steps": 735,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10203,
+   "score": 302,
+   "steps": 800,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10204,
+   "score": 234,
+   "steps": 459,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10205,
+   "score": 276,
+   "steps": 943,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10206,
+   "score": 42,
+   "steps": 85,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10207,
+   "score": 138,
+   "steps": 193,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10208,
+   "score": 146,
+   "steps": 200,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10209,
+   "score": 197,
+   "steps": 349,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10210,
+   "score": 279,
+   "steps": 716,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10211,
+   "score": 118,
+   "steps": 182,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10212,
+   "score": 135,
+   "steps": 185,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10213,
+   "score": 50,
+   "steps": 56,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10214,
+   "score": 39,
+   "steps": 45,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10215,
+   "score": 169,
+   "steps": 345,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10216,
+   "score": 64,
+   "steps": 69,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10217,
+   "score": 180,
+   "steps": 271,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10218,
+   "score": 285,
+   "steps": 681,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10219,
+   "score": 28,
+   "steps": 32,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10220,
+   "score": 250,
+   "steps": 459,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10221,
+   "score": 182,
+   "steps": 308,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10222,
+   "score": 220,
+   "steps": 554,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10223,
+   "score": 242,
+   "steps": 510,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10224,
+   "score": 268,
+   "steps": 614,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10225,
+   "score": 262,
+   "steps": 700,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10226,
+   "score": 130,
+   "steps": 228,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10227,
+   "score": 270,
+   "steps": 529,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10228,
+   "score": 152,
+   "steps": 237,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10229,
+   "score": 251,
+   "steps": 541,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10230,
+   "score": 166,
+   "steps": 274,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10231,
+   "score": 288,
+   "steps": 626,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10232,
+   "score": 254,
+   "steps": 463,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10233,
+   "score": 197,
+   "steps": 339,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10234,
+   "score": 289,
+   "steps": 660,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10235,
+   "score": 352,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10236,
+   "score": 244,
+   "steps": 448,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10237,
+   "score": 177,
+   "steps": 415,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10238,
+   "score": 19,
+   "steps": 28,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10239,
+   "score": 119,
+   "steps": 237,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10240,
+   "score": 274,
+   "steps": 561,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10241,
+   "score": 284,
+   "steps": 655,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10242,
+   "score": 170,
+   "steps": 298,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10243,
+   "score": 114,
+   "steps": 197,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10244,
+   "score": 128,
+   "steps": 251,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10245,
+   "score": 64,
+   "steps": 94,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10246,
+   "score": 331,
+   "steps": 826,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10247,
+   "score": 183,
+   "steps": 295,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10248,
+   "score": 288,
+   "steps": 843,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10249,
+   "score": 139,
+   "steps": 289,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10250,
+   "score": 117,
+   "steps": 170,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10251,
+   "score": 341,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10252,
+   "score": 304,
+   "steps": 609,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10253,
+   "score": 256,
+   "steps": 515,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10254,
+   "score": 163,
+   "steps": 269,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10255,
+   "score": 255,
+   "steps": 489,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10256,
+   "score": 30,
+   "steps": 33,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10257,
+   "score": 110,
+   "steps": 166,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10258,
+   "score": 188,
+   "steps": 291,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10259,
+   "score": 258,
+   "steps": 586,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10260,
+   "score": 175,
+   "steps": 335,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10261,
+   "score": 17,
+   "steps": 18,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10262,
+   "score": 78,
+   "steps": 149,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10263,
+   "score": 233,
+   "steps": 641,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10264,
+   "score": 100,
+   "steps": 138,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10265,
+   "score": 282,
+   "steps": 485,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10266,
+   "score": 132,
+   "steps": 237,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10267,
+   "score": 239,
+   "steps": 403,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10268,
+   "score": 326,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10269,
+   "score": 144,
+   "steps": 258,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10270,
+   "score": 317,
+   "steps": 906,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10271,
+   "score": 258,
+   "steps": 573,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10272,
+   "score": 299,
+   "steps": 763,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10273,
+   "score": 279,
+   "steps": 720,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10274,
+   "score": 301,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10275,
+   "score": 301,
+   "steps": 724,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10276,
+   "score": 66,
+   "steps": 103,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10277,
+   "score": 161,
+   "steps": 348,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10278,
+   "score": 97,
+   "steps": 152,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10279,
+   "score": 291,
+   "steps": 827,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10280,
+   "score": 92,
+   "steps": 134,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10281,
+   "score": 232,
+   "steps": 499,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10282,
+   "score": 272,
+   "steps": 619,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10283,
+   "score": 154,
+   "steps": 252,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10284,
+   "score": 75,
+   "steps": 90,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10285,
+   "score": 221,
+   "steps": 598,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10286,
+   "score": 340,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10287,
+   "score": 323,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10288,
+   "score": 90,
+   "steps": 110,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10289,
+   "score": 93,
+   "steps": 158,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10290,
+   "score": 258,
+   "steps": 585,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10291,
+   "score": 255,
+   "steps": 579,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10292,
+   "score": 77,
+   "steps": 84,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10293,
+   "score": 47,
+   "steps": 54,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10294,
+   "score": 111,
+   "steps": 244,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10295,
+   "score": 303,
+   "steps": 803,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10296,
+   "score": 267,
+   "steps": 561,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10297,
+   "score": 197,
+   "steps": 359,
+   "died": true,
+   "won": false
+  },
+  {
+   "seed": 10298,
+   "score": 311,
+   "steps": 1000,
+   "died": false,
+   "won": false
+  },
+  {
+   "seed": 10299,
+   "score": 50,
+   "steps": 85,
+   "died": true,
+   "won": false
+  }
+ ]
+}

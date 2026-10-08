@@ -5,3 +5,8 @@ TrainConfig(arch='res4', obs='fields', width=16, double=True, dueling=True, n_st
 [val] steps=60000 updates=14002 val_score=157.2 death=0.90 win=0.00 (26.7 min)
 [val] steps=80000 updates=19002 val_score=200.7 death=0.88 win=0.00 (36.5 min)
 [val] steps=100000 updates=24002 val_score=177.3 death=0.92 win=0.00 (46.1 min)
+[val] steps=120000 updates=29002 val_score=210.9 death=0.84 win=0.00 (55.7 min)
+[final] steps=120000 updates=29002 val_score=210.9 death=0.84 win=0.00 (56.2 min)
+{"best_val_score": 210.94, "best_env_steps": 120000, "updates": 29002, "minutes": 56.25763460000356}
+res4-nstep1_s0 standard/test: score 210.8 [199.6, 221.8]  death 0.85  win 0.00  steps 527
+res4-nstep1_s0 hard/test: score 101.9 [94.1, 110.0]  death 1.00  win 0.00  steps 141

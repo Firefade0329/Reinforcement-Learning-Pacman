@@ -84,6 +84,37 @@ def table_seeds(scenario="standard"):
     return "\n".join(lines)
 
 
+def ablation_deltas():
+    """Each ablation vs. its full-recipe baseline, paired per test episode (seed-averaged runs)."""
+    lines = ["| 变体 | 基线 | 得分差(变体 − 基线) [95% CI] | 逐种子:变体高于基线的种子数 |", "|---|---|---|---|"]
+    for arch in (L.ABLATION_ARCH, "mlp"):
+        base_names = L.run_names(arch)
+        base = L.seed_avg(base_names, "standard", "score")
+        base_seed = [float(L.per_episode(L.run_eval(n), "score").mean()) for n in base_names]
+        variants = [("nodouble", "去掉 Double"), ("nodueling", "去掉 Dueling"), ("nstep1", "n 步=1(去掉 n 步)")]
+        if arch != "mlp":
+            variants.append(("raw", "原始网格(去掉距离场)"))
+        for key, label in variants:
+            names = [f"{arch}raw_s{s}" for s in L.SEEDS] if key == "raw" else [f"{arch}-{key}_s{s}" for s in L.SEEDS]
+            var = L.seed_avg(names, "standard", "score")
+            if var is None or base is None:
+                continue
+            d, lo, hi = L.paired(var, base)
+            seed_means = [float(L.per_episode(L.run_eval(n), "score").mean()) for n in names]
+            better = sum(v > b for v, b in zip(seed_means, base_seed))
+            lines.append(f"| {label} | {LABEL.get(arch, arch)} | {d:+.1f} [{lo:+.1f}, {hi:+.1f}] | {better}/3 |")
+    return "\n".join(lines)
+
+
+def resumed_runs():
+    out = []
+    for p in sorted(L.RUNS.glob("*/stdout.log")):
+        txt = p.read_text(errors="ignore")
+        if "[resume]" in txt:
+            out.append(p.parent.name)
+    return ", ".join(out) if out else "无"
+
+
 def curves():
     import matplotlib
     matplotlib.use("Agg")
@@ -144,7 +175,7 @@ def curves():
 
 
 def main():
-    acc = subprocess.run([sys.executable, str(Path(__file__).with_name("check_acceptance.py"))],
+    acc = subprocess.run([sys.executable, str(Path(__file__).with_name("check_acceptance.py")), "--run-tests"],
                          capture_output=True, text=True, cwd=L.ROOT / "python", env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(L.ROOT / "python")})
     try:
         curves()
@@ -185,13 +216,29 @@ def main():
 
 最终智能体(按验证得分在 5 种网络中选出):**{LABEL.get(arch, arch) if arch else 'n/a'}**
 
+### 消融相对完整配方的变化(配对,标准场景)
+{ablation_deltas()}
+
+注:"逐种子"按种子编号对应(各配置的随机初始化与探索轨迹并不相同,所以只是粗略的方向一致性,不是严格配对)。CI 只反映测试局的抽样波动,**不含训练种子间的差异**;每格只有 3 个训练种子。
+
 ## 6. 曲线
 {figs}
 
-## 7. 验收门槛判定(`check_acceptance.py` 输出)
+## 7. 验收门槛判定(`check_acceptance.py --run-tests` 输出)
 ```
 {acc.stdout.strip()}
 ```
+
+## 8. 未达成项与局限(定性说明,数字见上表)
+- **S1 未达成**:最终神经网络(MLP)的平均得分低于强手写启发式 `safe-heuristic`,差距见第 7 节。"认真写规则"仍然更强。
+- **卷积网络在 12 万步预算下没有超过 `legacy`**(第 3 节):加深并不单调有益(S4)。CNN-2 → ResNet-2 有明显提升,但 ResNet-4、ResNet-8 反而更差且种子间方差更大。深度无收益的结论**只对本预算和本超参成立**:训练曲线在结束时仍在上升,更深的网络很可能需要更多样本。
+- **默认配方对卷积网络可能次优**:所有架构共用同一套超参(未逐架构调参),消融显示去掉 n 步在 ResNet-4 上得分明显更高(第 5 节),这不是事先预期的;原因目前只是假设(例如 ε-贪心探索下 n 步回报带入探索动作的偏差),**没有被实验验证**。因此"深度无收益"也可能部分源于配方而不是网络深度本身。
+- **输入里有特权信息**:MLP 的工程特征和卷积网络的距离场都由游戏内部状态(BFS 距离)算出;原始网格对照显示距离场对 ResNet-4 有帮助。MLP 表现最好,很可能因为特征直接给出了最短路信息,而不是"神经网络更擅长"。
+- **困难场景**(幽灵 70% 追击,训练中未见)下所有智能体都 100% 被抓,只能比较存活到被抓前吃到的豆数;不能说明任何智能体"学会了对付强追击"。
+- **只有一张地图**,随机起点提供了状态多样性,但不能声称泛化到别的地图。
+- **统计力有限**:每个配置 3 个训练种子,逐局 CI 不含种子间方差;差距较小的比较(例如 ResNet-2 与 ResNet-4)不应过度解读。
+- **过程中的工程事件**(详见 `docs/PLAN.md` 偏差记录):两个卷积运行曾被内存不足杀掉后重跑;`res8_s1`、`res8_s2` 使用旧的 float32 回放(与 uint8 回放等价到 1 ulp);虚拟机被挂起后部分运行从断点续训,续训时 episode 会重新开始。被续训过的运行:{resumed_runs()}。
+- **算力**:全部为 CPU、单进程 12 万步;GPU 上更长训练(见 `docs/LOCAL_GPU_RUN_PROMPT.md`)是补充实验,不在本报告内。
 """
     OUT.write_text(md)
     print(f"wrote {OUT}")
