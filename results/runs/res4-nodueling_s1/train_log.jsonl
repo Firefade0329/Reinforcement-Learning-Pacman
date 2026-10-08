@@ -29,3 +29,4 @@
 {"type": "eval", "env_steps": 100000, "updates": 23998, "val_score": 154.4, "val_death": 1.0, "val_win": 0.0, "minutes": 45.78576134045919}
 {"type": "train", "env_steps": 108000, "updates": 25998, "eps": 0.050000000000000044, "score": 138.0, "return": 125.80150000000049, "death": 1.0, "loss": 4.072933197021484}
 {"type": "train", "env_steps": 116000, "updates": 27998, "eps": 0.050000000000000044, "score": 125.58333333333333, "return": 113.58638888888937, "death": 1.0, "loss": 3.7481672763824463}
+{"type": "eval", "env_steps": 120000, "updates": 28998, "val_score": 122.98, "val_death": 1.0, "val_win": 0.0, "minutes": 54.978838916619615}
