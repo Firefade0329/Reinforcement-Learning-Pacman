@@ -69,3 +69,25 @@ train = false
 keepTrain = false
 readQ = true
 ```
+
+
+Python / deep-RL edition (2026 update)
+======================================
+A Python port of this game plus a ladder of agents (random → hand-written rules → tabular Q-learning →
+MLP / CNN / ResNet DQN) evaluated under one protocol now lives next to the original Java code, which is
+unchanged.
+
+* Start here: [`python/README.md`](python/README.md) (how to run, GPU notes), [`docs/PLAN.md`](docs/PLAN.md)
+  (plan, acceptance gates, deviation log), [`docs/RESULTS.md`](docs/RESULTS.md) (auto-generated results and
+  limitations), [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md) (how to verify).
+* The Java agent was re-run headless: with its default settings it scores about 160 pellets on average and
+  dies in ~96 % of games. The 300+ scores in `data/Score.txt` come from other training states and do not
+  represent that configuration.
+* Headline (120k-step CPU runs, 300 test games): the best learned agent (MLP on engineered features)
+  clearly beats the Java agent but not a careful hand-written planner; deeper conv nets did *not* help at this
+  training budget. See `docs/RESULTS.md` for the numbers, the ablations and the caveats.
+
+```
+cd python && pip install -r requirements.txt && python -m pytest tests -q
+bash scripts/acceptance.sh --quick
+```
