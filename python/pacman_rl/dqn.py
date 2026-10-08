@@ -11,7 +11,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from .env import NUM_ACTIONS, OBS_SHAPE, STANDARD, PacmanEnv
+from .env import FIELD_SHAPE, NUM_ACTIONS, OBS_SHAPE, STANDARD, PacmanEnv
 from .evaluate import VAL_SEEDS, evaluate_batched, summarize, train_seed
 from .features import FEATURE_DIM, feature_vector
 from .models import build_model
@@ -21,6 +21,7 @@ from .replay import NStepReplay
 @dataclass
 class TrainConfig:
     arch: str = "res4"            # mlp | cnn2 | res2 | res4 | res8
+    obs: str = "fields"           # conv input: "fields" (7 ch, BFS distance fields) | "grid" (5 raw planes)
     width: int = 16
     double: bool = True
     dueling: bool = True
@@ -43,12 +44,16 @@ class TrainConfig:
     threads: int = 1
 
 
-def observe_fn(arch: str):
-    return feature_vector if arch == "mlp" else (lambda env: env.observation())
+def observe_fn(arch: str, obs: str = "fields"):
+    if arch == "mlp":
+        return feature_vector
+    return (lambda env: env.observation_fields()) if obs == "fields" else (lambda env: env.observation())
 
 
-def obs_spec(arch: str):
-    return ((FEATURE_DIM,), np.float32) if arch == "mlp" else (OBS_SHAPE, np.float32)
+def obs_spec(arch: str, obs: str = "fields"):
+    if arch == "mlp":
+        return (FEATURE_DIM,), np.float32
+    return (FIELD_SHAPE if obs == "fields" else OBS_SHAPE), np.float32
 
 
 def make_policy(model: torch.nn.Module):
@@ -61,8 +66,12 @@ def make_policy(model: torch.nn.Module):
     return policy
 
 
-def evaluate_model(model, arch: str, scenario_cfg, seeds):
-    return evaluate_batched(make_policy(model), scenario_cfg, seeds, observe_fn(arch))
+def evaluate_model(model, cfg: "TrainConfig", scenario_cfg, seeds):
+    return evaluate_batched(make_policy(model), scenario_cfg, seeds, observe_fn(cfg.arch, cfg.obs))
+
+
+def in_ch(cfg: "TrainConfig") -> int:
+    return obs_spec(cfg.arch, cfg.obs)[0][0]
 
 
 def save_checkpoint(path: Path, model, cfg: TrainConfig, extra: dict):
@@ -73,7 +82,7 @@ def save_checkpoint(path: Path, model, cfg: TrainConfig, extra: dict):
 def load_checkpoint(path: Path):
     ck = torch.load(path, map_location="cpu", weights_only=False)
     cfg = TrainConfig(**ck["cfg"])
-    model = build_model(cfg.arch, cfg.width, cfg.dueling)
+    model = build_model(cfg.arch, cfg.width, cfg.dueling, in_ch(cfg))
     model.load_state_dict(ck["state_dict"])
     return model, cfg, ck
 
@@ -85,9 +94,9 @@ def train(cfg: TrainConfig, out_dir: Path, log=print) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "config.json").write_text(json.dumps(asdict(cfg), indent=1))
 
-    observe = observe_fn(cfg.arch)
-    shape, dtype = obs_spec(cfg.arch)
-    online = build_model(cfg.arch, cfg.width, cfg.dueling)
+    observe = observe_fn(cfg.arch, cfg.obs)
+    shape, dtype = obs_spec(cfg.arch, cfg.obs)
+    online = build_model(cfg.arch, cfg.width, cfg.dueling, in_ch(cfg))
     target = copy.deepcopy(online)
     target.eval()
     opt = torch.optim.Adam(online.parameters(), lr=cfg.lr)
@@ -111,7 +120,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print) -> dict:
 
     def do_eval(tag: str):
         nonlocal best_val, best_step
-        recs = evaluate_model(online, cfg.arch, STANDARD, VAL_SEEDS)
+        recs = evaluate_model(online, cfg, STANDARD, VAL_SEEDS)
         s = summarize(recs)
         online.train()
         row = {"type": "eval", "env_steps": env_steps, "updates": updates, "val_score": s["score_mean"],

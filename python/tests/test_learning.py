@@ -3,7 +3,7 @@ import pytest
 import torch
 
 from pacman_rl import maps
-from pacman_rl.env import OBS_SHAPE, STANDARD, PacmanEnv
+from pacman_rl.env import FIELD_SHAPE, OBS_SHAPE, STANDARD, PacmanEnv
 from pacman_rl.features import FEATURE_DIM, NUM_TABULAR_STATES, feature_vector, tabular_state
 from pacman_rl.models import ARCHS, build_model, receptive_field
 from pacman_rl.replay import NStepReplay
@@ -48,13 +48,13 @@ def test_replay_ring_buffer_wraps():
 def test_model_shapes_and_dueling(arch):
     for dueling in (True, False):
         m = build_model(arch, 16, dueling)
-        x = torch.zeros(3, *(OBS_SHAPE if arch != "mlp" else (FEATURE_DIM,)))
+        x = torch.zeros(3, *(FIELD_SHAPE if arch != "mlp" else (FEATURE_DIM,)))
         assert m(x).shape == (3, 5)
 
 
 def test_resnet_blocks_start_as_identity():
     m = build_model("res8", 16)
-    x = torch.rand(2, *OBS_SHAPE)
+    x = torch.rand(2, *FIELD_SHAPE)
     stem = m.trunk[1](m.trunk[0](x))
     h = stem
     for blk in list(m.trunk)[2:10]:
@@ -98,7 +98,35 @@ def test_dqn_smoke_training_runs_and_checkpoint_roundtrips(tmp_path):
                       buffer=2000, batch=8, seed=0)
     train(cfg, tmp_path, log=lambda *_: None)
     model, cfg2, _ = load_checkpoint(tmp_path / "last.pt")
-    a = evaluate_model(model, cfg2.arch, STANDARD, VAL_SEEDS[:4])
-    b = evaluate_model(model, cfg2.arch, STANDARD, VAL_SEEDS[:4])
+    a = evaluate_model(model, cfg2, STANDARD, VAL_SEEDS[:4])
+    b = evaluate_model(model, cfg2, STANDARD, VAL_SEEDS[:4])
     assert a == b  # same checkpoint, same seeds -> identical results
     assert (tmp_path / "train_log.jsonl").exists() and (tmp_path / "summary.json").exists()
+
+
+def test_distance_field_observation():
+    env = PacmanEnv(STANDARD)
+    env.reset(3)
+    obs = env.observation_fields()
+    assert obs.shape == FIELD_SHAPE and obs.dtype == np.float32 and np.isfinite(obs).all()
+    assert (obs[:5] == env.observation()).all()
+    a = env.agent
+    ax, ay = maps.CELL_X[a], maps.CELL_Y[a]
+    gold = np.flatnonzero(env.gold)
+    c = int(gold[0])
+    assert obs[5, maps.CELL_Y[c], maps.CELL_X[c]] == 0.0  # zero on a gold cell
+    assert obs[5, ay, ax] == pytest.approx(min(int(maps.DIST[a, gold].min()), 25) / 25.0)
+    for g in env.ghosts:  # ghost field is zero exactly at the ghosts
+        assert obs[6, maps.CELL_Y[g], maps.CELL_X[g]] == 0.0
+    assert (obs[5][maps.WALL] == 1).all() and (obs[6][maps.WALL] == 1).all()
+    assert obs[5:].min() >= 0 and obs[5:].max() <= 1
+    env.gold[:] = False
+    assert np.isfinite(env.observation_fields()).all()  # won state
+
+
+def test_raw_grid_mode_still_supported(tmp_path):
+    from pacman_rl.dqn import TrainConfig, train
+
+    train(TrainConfig(arch="cnn2", obs="grid", total_env_steps=160, learn_start=32, eval_every=160, n_envs=4,
+                      buffer=500, batch=8), tmp_path, log=lambda *_: None)
+    assert (tmp_path / "best.pt").exists()

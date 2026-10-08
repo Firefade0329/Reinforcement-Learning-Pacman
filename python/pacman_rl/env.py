@@ -21,6 +21,10 @@ from .maps import DIRS, H, N, NEIGHBOURS, W
 NUM_ACTIONS = 5
 OBS_CHANNELS = 5  # wall, gold, pacman, ghosts, ghosts one step ago
 OBS_SHAPE = (OBS_CHANNELS, H, W)
+FIELD_CHANNELS = OBS_CHANNELS + 2  # raw planes + gold-distance field + ghost-distance field
+FIELD_SHAPE = (FIELD_CHANNELS, H, W)
+GOLD_FIELD_RANGE = 25.0   # BFS steps mapped to [0, 1]
+GHOST_FIELD_RANGE = 12.0
 TOTAL_GOLD = N - 1  # every open cell holds gold except Pacman's spawn cell
 
 
@@ -142,6 +146,19 @@ class PacmanEnv:
         obs[2, maps.CELL_Y[self.agent], maps.CELL_X[self.agent]] = 1.0
         obs[3, maps.CELL_Y[self.ghosts], maps.CELL_X[self.ghosts]] = 1.0
         obs[4, maps.CELL_Y[self.ghost_prev], maps.CELL_X[self.ghost_prev]] = 1.0
+        return obs
+
+    def observation_fields(self) -> np.ndarray:
+        """Raw planes plus two BFS distance fields (structure the map gives for free):
+        ch5 = distance from each cell to the nearest gold, ch6 = to the nearest ghost,
+        both clipped/normalised to [0, 1]; walls are 1."""
+        obs = np.ones(FIELD_SHAPE, dtype=np.float32)
+        obs[:OBS_CHANNELS] = self.observation()
+        gold_cells = np.flatnonzero(self.gold)
+        gd = maps.DIST[:, gold_cells].min(axis=1) if gold_cells.size else np.zeros(N, dtype=np.int16)
+        hd = maps.DIST[self.ghosts].min(axis=0) if len(self.ghosts) else np.full(N, 99)
+        obs[5, maps.CELL_Y, maps.CELL_X] = np.minimum(gd, GOLD_FIELD_RANGE) / GOLD_FIELD_RANGE
+        obs[6, maps.CELL_Y, maps.CELL_X] = np.minimum(hd, GHOST_FIELD_RANGE) / GHOST_FIELD_RANGE
         return obs
 
     # ------------------------------------------------------------ utilities

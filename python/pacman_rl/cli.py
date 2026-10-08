@@ -59,7 +59,7 @@ def cmd_eval_model(a):
     model, cfg, _ = load_checkpoint(Path(a.ckpt))
     ck_dir = Path(a.ckpt).parent
     for scen in a.scenarios:
-        recs = evaluate_model(model, cfg.arch, SCENARIOS[scen], SPLITS[a.split])
+        recs = evaluate_model(model, cfg, SCENARIOS[scen], SPLITS[a.split])
         p = save_eval(ck_dir / f"{a.split}_{scen}.json", ck_dir.name, scen, a.split, recs)
         print(f"{ck_dir.name} {scen}/{a.split}: {fmt(p['summary'])}", flush=True)
 
@@ -85,6 +85,7 @@ def main():
     p = sub.add_parser("train")
     p.add_argument("--name")
     p.add_argument("--arch", choices=["mlp", "cnn2", "res2", "res4", "res8"])
+    p.add_argument("--obs", choices=["fields", "grid"])
     for k, t in [("width", int), ("n_step", int), ("batch", int), ("buffer", int), ("learn_start", int),
                  ("n_envs", int), ("steps_per_update", int), ("total_env_steps", int), ("eval_every", int),
                  ("seed", int), ("threads", int), ("lr", float), ("gamma", float), ("tau", float),
