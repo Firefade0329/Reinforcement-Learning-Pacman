@@ -166,6 +166,17 @@ def build_initial_models(cfg: "TrainConfig", device):
 
 
 @torch.no_grad()
+def greedy_actions(online, obs_batch, device) -> np.ndarray:
+    """Greedy action of every observation in the batch: ``torch.argmax`` over the Q values.  Ties are NOT broken by this
+    code: the frozen torch.argmax behaviour decides (on the CPU of torch 2.14.1 the first maximal index; see
+    tests/test_tie_break.py).  The same rule applies to the Double-DQN end action (td_target) and to evaluation."""
+    online.eval()
+    out = online(torch.from_numpy(np.stack(obs_batch)).to(device)).argmax(dim=1).cpu().numpy()
+    online.train()
+    return out
+
+
+@torch.no_grad()
 def td_target(online, target, ret, disc, o2, double: bool):
     """Bootstrapped TD target ``y = ret + disc * Q_target(o2, a*)`` for a batch from the n-step replay.
     ``ret`` is the discounted reward sum over the stored horizon h and ``disc`` is gamma^h (0 after a true
@@ -323,10 +334,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
     while env_steps < cfg.total_env_steps:
         frac = min(1.0, env_steps / (cfg.eps_frac * cfg.total_env_steps))
         eps = cfg.eps_start + (cfg.eps_end - cfg.eps_start) * frac
-        online.eval()
-        with torch.no_grad():
-            greedy = online(torch.from_numpy(np.stack(obs)).to(device)).argmax(dim=1).cpu().numpy()
-        online.train()
+        greedy = greedy_actions(online, obs, device)
         explore = rng.random(cfg.n_envs) < eps
         actions = np.where(explore, rng.integers(0, NUM_ACTIONS, cfg.n_envs), greedy)
 
