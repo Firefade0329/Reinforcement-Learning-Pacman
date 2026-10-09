@@ -83,9 +83,12 @@ unchanged.
 * The Java agent was re-run headless: with its default settings it scores about 160 pellets on average and
   dies in ~96 % of games. The 300+ scores in `data/Score.txt` come from other training states and do not
   represent that configuration.
-* Headline (120k-step CPU runs, 300 test games): the best learned agent (MLP on engineered features)
-  clearly beats the Java agent but not a careful hand-written planner; deeper conv nets did *not* help at this
-  training budget. See `docs/RESULTS.md` for the numbers, the ablations and the caveats.
+* Headline (300 test games, standard ghosts): the best learned agent (an MLP on engineered features) clearly
+  beats the Java agent, and with 300k training steps (local GPU run) is statistically on par with a careful
+  hand-written planner; with 120k steps (cloud CPU run) it was still ~12 % below it. Deeper conv nets did *not*
+  help at either budget; the one robust algorithmic finding is that n-step = 1 helps the ResNet-4 a lot.
+  See `docs/RESULTS.md` (cloud, 120k steps), `results_gpu/RESULTS.md` (local, 300k steps) and
+  `docs/RESULTS_COMPARISON.md` (side by side, auto-generated) for numbers, ablations and caveats.
 
 ```
 cd python && pip install -r requirements.txt && python -m pytest tests -q
