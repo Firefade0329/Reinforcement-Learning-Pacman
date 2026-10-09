@@ -82,10 +82,12 @@ def evaluate_named(name: str, cfg: EnvConfig, seeds, workers: int = 4) -> list[d
         return list(ex.map(_worker, jobs, chunksize=max(1, len(jobs) // (workers * 4))))
 
 
-def evaluate_batched(policy, cfg: EnvConfig, seeds, observe) -> list[dict]:
+def evaluate_batched(policy, cfg: EnvConfig, seeds, observe, record_truncated: bool = False) -> list[dict]:
     """Run all episodes in lock-step so a neural policy can be called once per step on a batch.
 
     ``observe(env) -> array`` builds one observation; ``policy(batch) -> actions``.
+    ``record_truncated`` adds the time-limit flag to every record (new evaluation path only; the default keeps the
+    historical record layout byte-for-byte).
     """
     envs = [PacmanEnv(cfg) for _ in seeds]
     for e, s in zip(envs, seeds):
@@ -103,6 +105,8 @@ def evaluate_batched(policy, cfg: EnvConfig, seeds, observe) -> list[dict]:
             if term or trunc:
                 out[i] = {"seed": seeds[i], "score": info["score"], "steps": info["steps"],
                           "died": bool(info["died"]), "won": bool(info["won"])}
+                if record_truncated:
+                    out[i]["truncated"] = bool(trunc)
             else:
                 nxt.append(i)
         live = nxt

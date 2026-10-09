@@ -73,6 +73,16 @@ def cmd_train(a):
 def cmd_eval_model(a):
     from .dqn import evaluate_model, load_checkpoint
 
+    if a.out_dir:  # new path: own output directory, never overwrites, 1 torch thread by default
+        from .evalrun import evaluate_checkpoint
+
+        if a.split in SEALED_SETS:
+            raise SealedSetError(f"split {a.split!r} is sealed; use `prereg.py final-eval` with a verified manifest")
+        for sc, path in evaluate_checkpoint(a.ckpt, a.split, a.scenarios, a.out_dir, label=a.label, device=a.device,
+                                            threads=a.threads, force=a.force).items():
+            print(f"{path.parent.name} {sc}/{a.split} -> {rel(path)}", flush=True)
+        return
+
     model, cfg, _ = load_checkpoint(Path(a.ckpt), a.device)
     ck_dir = Path(a.ckpt).parent
     for scen in a.scenarios:
@@ -184,6 +194,10 @@ def main():
     p.add_argument("--split", default="val", choices=list(SPLITS))
     p.add_argument("--scenarios", nargs="+", default=["standard"], choices=list(SCENARIOS))
     p.add_argument("--device", default="cpu", choices=["cpu", "cuda", "auto"])
+    p.add_argument("--out-dir", help="write <out-dir>/<label>/<scenario>.json instead of next to the checkpoint; never overwrites")
+    p.add_argument("--label", help="sub-directory name (default: the checkpoint's stem, e.g. last / best)")
+    p.add_argument("--threads", type=int, default=1, help="torch threads for the --out-dir path (default 1)")
+    p.add_argument("--force", action="store_true", help="allow --out-dir to replace an existing output")
     p.set_defaults(fn=cmd_eval_model)
 
     p = sub.add_parser("bench", help="time gradient updates per architecture on a device")

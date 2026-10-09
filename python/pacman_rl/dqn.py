@@ -81,8 +81,8 @@ def make_policy(model: torch.nn.Module):
     return policy
 
 
-def evaluate_model(model, cfg: "TrainConfig", scenario_cfg, seeds):
-    return evaluate_batched(make_policy(model), scenario_cfg, seeds, observe_fn(cfg.arch, cfg.obs))
+def evaluate_model(model, cfg: "TrainConfig", scenario_cfg, seeds, record_truncated: bool = False):
+    return evaluate_batched(make_policy(model), scenario_cfg, seeds, observe_fn(cfg.arch, cfg.obs), record_truncated)
 
 
 def quant_scale(arch: str, obs: str):
