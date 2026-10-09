@@ -152,10 +152,10 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
             episode_k = ck["episode_k"]
             rng.bit_generator.state = ck["rng"]
             torch.set_rng_state(ck["torch_rng"])
-            data = np.load(replay_path)
             n = int(ck["replay_size"])
-            for name in ("obs", "next_obs", "act", "ret", "disc"):
-                getattr(replay, name)[:n] = data[name]
+            with np.load(replay_path) as data:  # close it: Windows cannot os.replace an open file
+                for name in ("obs", "next_obs", "act", "ret", "disc"):
+                    getattr(replay, name)[:n] = data[name]
             replay.pos, replay.size = int(ck["replay_pos"]), n
             for i, e in enumerate(envs):  # fresh episodes with unused seeds
                 e.reset(train_seed(cfg.seed, episode_k))
