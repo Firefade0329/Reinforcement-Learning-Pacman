@@ -62,3 +62,14 @@ evaluation `last/standard.json`, `best/standard.json` (and `last/hard.json` only
 `prereg-eval-1` format (`schema_version`, `meta`, `records` with the `truncated` field). `results_prereg/evaluation_seal.json`
 (`prereg.py seal-eval`) lists the SHA-256 of every file the analysis reads. Tie-break of the greedy action: see `docs/PLAN.md`
 deviation 9.
+
+## Analysis script (ANALYSIS_SPEC_v0.3.2)
+
+`python/scripts/prereg_analysis.py analyze --mode synthetic|formal --manifest ... --input-root ... --output-dir ... [--project-root ...]`
+(numpy only; `prereg_analysis.requirements.txt` pins the NumPy version for which the contracted bootstrap index stream was checked).
+It reads only the files named by the freeze manifest and the evaluation seal, validates every input before computing anything
+(exit code 2 and a JSON error on stderr, no output directory left behind), and writes `REPORT.md`, `analysis.json`,
+`bootstrap_replicates.csv`, `bootstrap_indices.sha256` and `input_manifest.json` atomically. Before the freeze it is run on
+synthetic studies only (`python/tests/test_prereg_analysis.py`, fixtures F1-F8 and malformed inputs E1-E13 of the specification
+section 8, with hand-derived expected values); no real or old result is ever read. The human sign-off fields (reviewer, date, what was
+checked, freeze approval) are intentionally not filled in by the code or its author.
