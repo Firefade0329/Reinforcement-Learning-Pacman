@@ -77,7 +77,7 @@ Original Java agent run headless (150 games, no seeds): mean score 160.5 [143.9,
 
 ## 7. 验收门槛判定(`check_acceptance.py --run-tests` 输出)
 ```
-M1  MUST   PASS      49 passed, 1 skipped
+M1  MUST   PASS      52 passed, 1 skipped
 M2  MUST   PASS      mlp_s0/best.pt evaluated twice on 10 validation seeds (cpu): identical
 M3  MUST   PASS      baselines random/greedy-bfs/legacy/safe-heuristic + tabular x3 seeds present
 M4  MUST   PASS      final arch=mlp (chosen on val). score: diff +110.0 [95% CI +95.8, +123.9]; death (legacy - deep): diff +0.3 [95% CI +0.2, +0.3]; per-seed means [266.3, 252.6, 271.2] vs legacy 153.4
