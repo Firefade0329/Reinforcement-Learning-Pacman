@@ -7,6 +7,7 @@ canonical weight hash, training step), the seed range, the device and the torch 
 """
 from __future__ import annotations
 
+import json
 from dataclasses import asdict
 from pathlib import Path
 
@@ -17,8 +18,22 @@ from .evaluate import SCENARIOS, save_eval, seed_set
 from .provenance import environment_info, file_sha256, state_hash
 
 
+PREREG_EVAL_SCHEMA = "prereg-eval-1"
+
+
+def prereg_eval_payload(records, *, run_name, cfg, label, step, weights_sha256, code_commit, scenario, device, threads,
+                        synthetic=False, reused_from=None) -> dict:
+    """The fixed wrapper read by the analysis script (ANALYSIS_SPEC section 2.2): schema_version + meta + records."""
+    meta = {"synthetic": synthetic, "run_name": run_name, "arch": cfg.arch, "n_step": cfg.n_step, "train_seed": cfg.seed,
+            "checkpoint": label, "checkpoint_step": step, "weights_sha256": weights_sha256, "code_commit": code_commit,
+            "scenario": scenario, "device": device, "torch_threads": threads}
+    if reused_from:
+        meta["reused_from"] = reused_from
+    return {"schema_version": PREREG_EVAL_SCHEMA, "meta": meta, "records": records}
+
+
 def evaluate_checkpoint(ckpt, split: str, scenarios, out_dir, *, label: str | None = None, device: str = "cpu",
-                        threads: int = 1, force: bool = False, unseal=None) -> dict[str, Path]:
+                        threads: int = 1, force: bool = False, unseal=None, prereg_meta: dict | None = None) -> dict[str, Path]:
     ckpt, out_dir = Path(ckpt), Path(out_dir)
     label = label or ckpt.stem
     dest = out_dir / label
@@ -37,5 +52,13 @@ def evaluate_checkpoint(ckpt, split: str, scenarios, out_dir, *, label: str | No
              "records_have_truncated_field": True}
     for sc, path in targets.items():
         records = evaluate_model(model, cfg, SCENARIOS[sc], seeds, record_truncated=True)
-        save_eval(path, f"{ckpt.parent.name}/{label}", sc, split, records, extra=extra)
+        if prereg_meta is not None:  # preregistered format: wrapper object with meta + records, nothing else
+            payload = prereg_eval_payload(records, run_name=prereg_meta["run_name"], cfg=cfg, label=label, step=ck.get("env_steps"),
+                                          weights_sha256=identity["state_sha256"], code_commit=prereg_meta["code_commit"], scenario=sc,
+                                          device=device, threads=torch.get_num_threads(), synthetic=prereg_meta.get("synthetic", False))
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "w" if force else "x", encoding="utf-8") as f:  # "x": never replaces an existing file
+                json.dump(payload, f, indent=1)
+        else:
+            save_eval(path, f"{ckpt.parent.name}/{label}", sc, split, records, extra=extra)
     return targets

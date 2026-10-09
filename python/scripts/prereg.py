@@ -41,7 +41,8 @@ FORBIDDEN_ENV = ("PACMAN_TRAIN_EXTRA", "PACMAN_STEPS", "PACMAN_DEVICE", "PACMAN_
 DEFAULT_RESULTS = ROOT / "results_prereg"
 SMOKE_RESULTS = ROOT / "results_prereg_smoke"
 REQUIRED_FILES = ("config.json", "train_log.jsonl", "summary.json", "last.pt", "best.pt", "code_version.json", "environment.json")
-TO_FILL = ("machine", "workers", "frozen_commit", "analysis_script_sha256", "preregistration_document_sha256")
+TOP_LEVEL_TO_FILL = ("machine_id", "worker_count", "code_commit", "hard_enabled")
+TO_FILL = ("analysis_script_sha256", "preregistration_document_sha256", "dependency_lock_sha256", "driver_and_os_note")
 
 
 class Refused(SystemExit):
@@ -86,8 +87,8 @@ def finalize(run_dir: Path, name: str, cfg, attempt: int, order) -> list[str]:
     problems += [f"forbidden file/dir in a formal run: {x}" for x in forbidden]
     if problems:
         return problems
-    config = json.loads((run_dir / "config.json").read_text())
-    if config != PR.expected_config_json(cfg):
+    train_config = json.loads((run_dir / "config.json").read_text())
+    if train_config != PR.expected_config_json(cfg):
         problems.append("config.json differs from the configuration derived from the matrix row")
     summary = json.loads((run_dir / "summary.json").read_text())
     if summary.get("env_steps") != cfg.total_env_steps:
@@ -101,11 +102,27 @@ def finalize(run_dir: Path, name: str, cfg, attempt: int, order) -> list[str]:
     import torch
 
     state = lambda f: P.state_hash(torch.load(run_dir / f, weights_only=False, map_location="cpu")["state_dict"])  # noqa: E731
+    code_version = json.loads((run_dir / "code_version.json").read_text())
+    row = next((r for r in PR.load_matrix() if r["run_name"] == name), {"order": order, "run_name": name, "primary_checkpoint": "last"})
+    sm = summary
+    from pacman_rl.evaluate import seed_set
+
+    boundaries = list(range(cfg.eval_every, cfg.total_env_steps + 1, cfg.eval_every))
+    steps_ok = sm.get("validation_steps") == boundaries + ([cfg.total_env_steps] if cfg.total_env_steps % cfg.eval_every else [])  # formal: exactly 15
+    if (sm.get("run_name") != name or sm.get("total_env_steps") != cfg.total_env_steps or not isinstance(sm.get("actual_updates"), int)
+            or not isinstance(sm.get("replay", {}).get("size"), int) or not steps_ok
+            or sm.get("validation_episodes_each") != len(seed_set(cfg.val_set))
+            or sm.get("checkpoints", {}).get("last", {}).get("step") != cfg.total_env_steps):
+        problems.append("summary.json does not satisfy the preregistered summary contract (budget / validation schedule / checkpoints)")
+        return problems
+    config = PR.effective_config(row, PR.load_freeze(), cfg, code_version["git_sha"], P.file_sha256(PR.FREEZE_FILE))
+    (run_dir / "train_config.json").write_text(json.dumps(train_config, indent=1))  # what train() wrote, kept for reference
+    (run_dir / "config.json").write_text(json.dumps(config, indent=1))              # merged effective configuration (the contract file)
     done = {"run": name, "attempt": attempt, "matrix_order": order, "matrix_sha256": PR.MATRIX_SHA256, "config": config,
             "last_file_sha256": P.file_sha256(run_dir / "last.pt"), "best_file_sha256": P.file_sha256(run_dir / "best.pt"),
             "last_state_sha256": state("last.pt"), "best_state_sha256": state("best.pt"),
             "init_online_hash": init[0]["online_hash"], "summary": summary,
-            "code_version": json.loads((run_dir / "code_version.json").read_text()),
+            "code_version": code_version,
             "environment": json.loads((run_dir / "environment.json").read_text()), "completed_utc": utc()}
     (run_dir / "run_complete.json").write_text(json.dumps(done, indent=1), encoding="utf-8")
     return []
@@ -146,15 +163,18 @@ def execute(name: str, cfg, results: Path, order=None) -> str:
 def freeze_problems(freeze: dict) -> list[str]:
     problems = []
     if freeze.get("status") != "frozen":
-        problems.append(f"freeze_config.json status is {freeze.get('status')!r}, not 'frozen'")
+        problems.append(f"{PR.FREEZE_FILE.name} status is {freeze.get('status')!r}, not 'frozen'")
+    for k in TOP_LEVEL_TO_FILL:
+        if freeze.get(k) in (None, ""):
+            problems.append(f"{k} is not filled in")
     for k in TO_FILL:
         if freeze["to_fill_at_freeze"].get(k) in (None, ""):
             problems.append(f"to_fill_at_freeze.{k} is not filled in")
     if freeze["to_fill_at_freeze"].get("power_and_sleep_settings_confirmed") is not True:
         problems.append("to_fill_at_freeze.power_and_sleep_settings_confirmed must be true")
     if freeze["matrix_sha256"] != PR.MATRIX_SHA256:
-        problems.append("freeze_config matrix_sha256 differs from the code's pinned value")
-    return problems
+        problems.append("frozen config matrix_sha256 differs from the code's pinned value")
+    return problems + PR.check_frozen_config(freeze)
 
 
 def preflight(freeze: dict, workers: int | None, *, allow_unfrozen: bool) -> int:
@@ -162,17 +182,17 @@ def preflight(freeze: dict, workers: int | None, *, allow_unfrozen: bool) -> int
     problems = PR.check_matrix_file()
     if not allow_unfrozen:
         problems += freeze_problems(freeze)
-        cv = P.code_version(ROOT, {"docs/prereg/matrix_v0.3.1.csv": "", "docs/prereg/freeze_config.json": ""})
+        cv = P.code_version(ROOT, {"docs/prereg/matrix.csv": "", "docs/prereg/frozen_config_v0.3.2.json": ""})
         if cv["git_dirty"] or cv["git_dirty"] is None:
             problems.append("the working tree is not clean (or git is unavailable)")
-        if cv["git_sha"] != freeze["to_fill_at_freeze"].get("frozen_commit"):
+        if cv["git_sha"] != freeze.get("code_commit"):
             problems.append("HEAD is not the frozen commit")
-    frozen_workers = freeze["to_fill_at_freeze"].get("workers")
+    frozen_workers = freeze.get("worker_count")
     w = workers or frozen_workers or 1
     if frozen_workers and w != frozen_workers and not allow_unfrozen:
         problems.append(f"workers={w} but the frozen configuration says {frozen_workers}")
-    if w > freeze["training"]["max_workers_without_explicit_setting"] and w != frozen_workers:
-        problems.append(f"{w} workers: more than {freeze['training']['max_workers_without_explicit_setting']} needs an explicit frozen setting")
+    if w > freeze["max_workers_without_explicit_setting"] and w != frozen_workers:
+        problems.append(f"{w} workers: more than {freeze['max_workers_without_explicit_setting']} needs an explicit frozen setting")
     if problems:
         raise Refused("refusing to start:\n  - " + "\n  - ".join(problems))
     return w
@@ -202,7 +222,7 @@ def smoke(profile: str, device: str, results: Path, steps=None, pairs=None, work
     template = {(r["arch"], r["n_step"]): r for r in rows if r["seed"] == 100}
     jobs = []
     for arch, n, seed in (pairs or prof["pairs"]):
-        cfg = PR.train_config(template[(arch, n)], freeze, seed=seed, device=device, val_set=freeze["seeds"]["smoke_val_set"],
+        cfg = PR.train_config(template[(arch, n)], freeze, seed=seed, device=device, val_set=freeze["smoke_val_set"],
                               total_env_steps=steps or prof["steps"], learn_start=prof["learn_start"], buffer=prof["buffer"],
                               eval_every=prof["eval_every"])
         jobs.append((f"smoke_{arch}_n{n}_s{seed}", cfg))
@@ -228,7 +248,7 @@ def smoke(profile: str, device: str, results: Path, steps=None, pairs=None, work
             ev = {}
             for label in ("last", "best"):
                 t = time.time()
-                out = evaluate_checkpoint(run_dir / f"{label}.pt", freeze["seeds"]["smoke_val_set"], ["standard"], run_dir / "eval_smoke", device="cpu", threads=1, force=True)
+                out = evaluate_checkpoint(run_dir / f"{label}.pt", freeze["smoke_val_set"], ["standard"], run_dir / "eval_smoke", device="cpu", threads=1, force=True)
                 ev[label] = {"seconds": round(time.time() - t, 2), "n_records": len(json.loads(out["standard"].read_text())["records"])}
             entry["cpu_eval_10_episodes"] = ev
         report["runs"][name] = entry
@@ -267,38 +287,43 @@ def make_manifest(results: Path, analysis_script: Path, out: Path, *, rows=None,
     return seal.write_manifest(out, manifest)
 
 
-def final_eval_run(results: Path, name: str, token, scenarios=("standard",), hard=False) -> dict[str, str]:
-    """Evaluate last.pt and best.pt of one run on the sealed seeds (CPU, 1 thread) into runs/<name>/eval_final/{last,best}/.
-    If best and last hold identical weights the evaluation is run once and the file is reused (and says so)."""
-    from pacman_rl.evalrun import evaluate_checkpoint
+def final_eval_run(results: Path, name: str, token, freeze: dict | None = None, scenarios=None) -> dict[str, str]:
+    """Evaluate last.pt and best.pt of one run on the sealed seeds (CPU, 1 thread) into runs/<name>/{last,best}/<scenario>.json
+    (preregistered format).  The optional hard scenario is evaluated for last.pt only and only if the frozen configuration
+    enables it.  If best and last hold identical weights the evaluation is run once and the best file reuses the records
+    (and says so in meta.reused_from)."""
+    from pacman_rl.evalrun import evaluate_checkpoint, prereg_eval_payload
 
+    freeze = freeze or PR.load_freeze()
+    if not isinstance(freeze.get("hard_enabled"), bool):
+        raise Refused("hard_enabled must be declared (true/false) in the frozen configuration before the final evaluation")
     run = results / "runs" / name
     done = json.loads((run / "run_complete.json").read_text())
-    out = run / "eval_final"
-    kw = dict(split=PR.load_freeze()["seeds"]["final_test_set"], device="cpu", threads=1, unseal=token)
+    meta = {"run_name": name, "code_commit": done["code_version"]["git_sha"], "synthetic": False}
+    kw = dict(split=freeze["test_set"], device=freeze["final_eval_device"], threads=freeze["final_eval_threads"], unseal=token, prereg_meta=meta)
     written = {}
-    for sc, path in evaluate_checkpoint(run / "last.pt", scenarios=list(scenarios), out_dir=out, label="last", **kw).items():
+    for sc, path in evaluate_checkpoint(run / "last.pt", scenarios=["standard"], out_dir=run, label="last", **kw).items():
         written[f"last/{sc}"] = P.file_sha256(path)
     if done["best_state_sha256"] == done["last_state_sha256"]:
-        for sc in scenarios:
-            payload = json.loads((out / "last" / f"{sc}.json").read_text())
-            payload["agent"] = f"{name}/best"
-            payload["extra"]["checkpoint"] = {**payload["extra"]["checkpoint"], "label": "best", "file_sha256": done["best_file_sha256"], "reused_from": "last"}
-            (out / "best").mkdir(parents=True, exist_ok=True)
-            if (out / "best" / f"{sc}.json").exists():
-                raise FileExistsError(f"{name}: best/{sc}.json exists")
-            (out / "best" / f"{sc}.json").write_text(json.dumps(payload, indent=1))
-            written[f"best/{sc}"] = P.file_sha256(out / "best" / f"{sc}.json")
+        last = json.loads((run / "last" / "standard.json").read_text())
+        (run / "best").mkdir(exist_ok=True)
+        best = prereg_eval_payload(last["records"], run_name=name, cfg=PR.train_config(next(r for r in PR.load_matrix() if r["run_name"] == name), freeze),
+                                   label="best", step=done["summary"]["checkpoints"]["best"]["step"], weights_sha256=done["best_state_sha256"],
+                                   code_commit=meta["code_commit"], scenario="standard", device=freeze["final_eval_device"],
+                                   threads=freeze["final_eval_threads"], reused_from="last")
+        with open(run / "best" / "standard.json", "x", encoding="utf-8") as f:
+            json.dump(best, f, indent=1)
+        written["best/standard"] = P.file_sha256(run / "best" / "standard.json")
     else:
-        for sc, path in evaluate_checkpoint(run / "best.pt", scenarios=list(scenarios), out_dir=out, label="best", **kw).items():
+        for sc, path in evaluate_checkpoint(run / "best.pt", scenarios=["standard"], out_dir=run, label="best", **kw).items():
             written[f"best/{sc}"] = P.file_sha256(path)
-    if hard:
-        for sc, path in evaluate_checkpoint(run / "last.pt", scenarios=["hard"], out_dir=out, label="last", **kw).items():
+    if freeze["hard_enabled"]:
+        for sc, path in evaluate_checkpoint(run / "last.pt", scenarios=["hard"], out_dir=run, label="last", **kw).items():
             written[f"last/{sc}"] = P.file_sha256(path)
     return written
 
 
-def final_eval(manifest: Path, results: Path, analysis_script: Path, *, unseal: bool, hard=False, rows=None, freeze=None,
+def final_eval(manifest: Path, results: Path, analysis_script: Path, *, unseal: bool, rows=None, freeze=None,
                allow_unfrozen=False, tiny=None) -> dict:
     """The ONLY code path that reads the sealed test seeds.  Verifies the manifest against the files on disk first."""
     from pacman_rl import seal
@@ -313,9 +338,22 @@ def final_eval(manifest: Path, results: Path, analysis_script: Path, *, unseal: 
         raise Refused(str(e))
     with open(results / "unseal_log.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps({"utc": utc(), "manifest_sha256": token.manifest_sha256, "runs": len(rows)}) + "\n")
-    index = {r["run_name"]: final_eval_run(results, r["run_name"], token, hard=hard) for r in rows}
+    index = {r["run_name"]: final_eval_run(results, r["run_name"], token, freeze) for r in rows}
     (results / "final_eval_index.json").write_text(json.dumps(index, indent=1), encoding="utf-8")  # file hashes only, no scores
     return index
+
+
+def make_evaluation_seal(results: Path, pretest_manifest: Path, freeze_manifest: Path, out: Path | None = None, *, rows=None, freeze=None) -> str:
+    """After the final evaluation: hash every file the analysis reads and write evaluation_seal.json."""
+    from pacman_rl import seal
+
+    rows, freeze = rows or PR.load_matrix(), freeze or PR.load_freeze()
+    out = out or results / "evaluation_seal.json"
+    if out.exists():
+        raise Refused(f"{out.name} already exists; the evaluation is sealed once")
+    obj = seal.build_evaluation_seal(results, rows, freeze, pretest_manifest, freeze_manifest)
+    out.write_text(json.dumps(obj, indent=1, sort_keys=True), encoding="utf-8")
+    return P.file_sha256(out)
 
 
 # ------------------------------------------------------------------ command line
@@ -337,7 +375,15 @@ def main(argv=None):
     p.add_argument("--manifest", type=Path, required=True)
     p.add_argument("--analysis-script", type=Path, required=True)
     p.add_argument("--unseal", action="store_true", help="explicit confirmation that the test seeds may be read now")
-    p.add_argument("--hard", action="store_true", help="also evaluate last.pt on the optional hard scenario")
+    p = sub.add_parser("seal-eval", help="after final-eval: write evaluation_seal.json (hashes of every file the analysis reads)")
+    p.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS)
+    p.add_argument("--manifest", type=Path, required=True, help="the pre-test integrity manifest")
+    p.add_argument("--freeze-manifest", type=Path, default=PR.PREREG_DIR / "freeze_manifest.json")
+    p = sub.add_parser("freeze-manifest", help="write docs/prereg/freeze_manifest.json for the current clean commit")
+    p.add_argument("--analysis-script", required=True, help="path relative to the repository root")
+    p.add_argument("--dependency-lock", required=True, help="path relative to the repository root")
+    p.add_argument("--extra-frozen", nargs="*", default=[], help="further files to freeze (the preregistration documents), relative paths")
+    p.add_argument("--out", type=Path, default=PR.PREREG_DIR / "freeze_manifest.json")
     p = sub.add_parser("smoke")
     p.add_argument("--profile", choices=list(PROFILES), default="quick")
     p.add_argument("--device", default="cuda", choices=["cpu", "cuda", "auto"])
@@ -369,8 +415,26 @@ def main(argv=None):
         print(f"manifest written, sha256 {sha}")
         return 0
     if a.cmd == "final-eval":
-        index = final_eval(a.manifest, a.results_dir, a.analysis_script, unseal=a.unseal, hard=a.hard)
+        index = final_eval(a.manifest, a.results_dir, a.analysis_script, unseal=a.unseal)
         print(f"final evaluation written for {len(index)} runs (see final_eval_index.json); scores are not printed")
+        return 0
+    if a.cmd == "seal-eval":
+        try:
+            sha = make_evaluation_seal(a.results_dir, a.manifest, a.freeze_manifest)
+        except Exception as e:  # noqa: BLE001
+            raise Refused(str(e))
+        print(f"evaluation seal written, sha256 {sha}")
+        return 0
+    if a.cmd == "freeze-manifest":
+        from pacman_rl import seal
+
+        try:
+            obj = seal.build_freeze_manifest(ROOT, "docs/prereg/matrix.csv", "docs/prereg/frozen_config_v0.3.2.json", a.analysis_script,
+                                             a.dependency_lock, a.extra_frozen)
+        except Exception as e:  # noqa: BLE001
+            raise Refused(str(e))
+        a.out.write_text(json.dumps(obj, indent=1, sort_keys=True), encoding="utf-8")
+        print(f"freeze manifest written for commit {obj['code_commit']}")
         return 0
     if a.cmd == "smoke":
         pairs = [(x.split(":")[0], int(x.split(":")[1]), int(x.split(":")[2])) for x in a.pairs] if a.pairs else None

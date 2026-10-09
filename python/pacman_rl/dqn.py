@@ -383,5 +383,14 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
                "minutes": (time.time() - t0) / 60, "env_steps": env_steps, "replay_size": replay.size,
                "episodes_started": episode_k, "nonfinite_loss_updates_this_session": int(bad_loss.item()),
                "weights_finite": all(bool(torch.isfinite(p).all()) for p in online.parameters()), **peak_memory(device)}
+    # fields of the preregistered summary contract (docs/prereg/): budget, final replay occupancy, updates, validation schedule, hashes
+    log_rows = [json.loads(x) for x in (out_dir / "train_log.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    init_rows = [r for r in log_rows if r.get("type") == "init"]
+    summary.update({
+        "run_name": out_dir.name, "total_env_steps": cfg.total_env_steps, "replay": {"size": replay.size}, "actual_updates": updates,
+        "validation_steps": [r["env_steps"] for r in log_rows if r.get("type") == "eval"], "validation_episodes_each": len(val_seeds),
+        "initial_state_dict_sha256": init_rows[0]["online_hash"] if init_rows else None,
+        "checkpoints": {"last": {"step": env_steps, "weights_sha256": state_hash(online)},
+                        "best": {"step": best_step, "weights_sha256": state_hash(torch.load(out_dir / "best.pt", weights_only=False, map_location="cpu")["state_dict"])}}})
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=1))
     return summary

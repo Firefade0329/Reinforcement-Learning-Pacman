@@ -64,10 +64,12 @@ def run_problems(results_dir: Path, rows, freeze, *, allow_unfrozen: bool, tiny_
         done = json.loads(done_file.read_text())
         if (run / "failure.json").exists():
             problems.append(f"{name}: failure.json present")
-        stray = [p.name for p in run.iterdir() if p.name.startswith(("test", "final")) or p.name.startswith("resume") or p.name == "eval_final"]
+        stray = [p.name for p in run.iterdir() if p.name.startswith(("test", "final")) or p.name.startswith("resume") or p.name in ("last", "best")]
         if stray:
             problems.append(f"{name}: forbidden files present before the final evaluation: {stray}")
-        if done["config"] != PR.expected_config_json(PR.train_config(r, freeze, **(tiny_overrides or {}))):
+        want = PR.effective_config(r, freeze, PR.train_config(r, freeze, **(tiny_overrides or {})), done["code_version"]["git_sha"],
+                                   PR.file_sha256(PR.FREEZE_FILE))
+        if done["config"] != want or json.loads((run / "config.json").read_text()) != want:
             problems.append(f"{name}: recorded configuration differs from the one derived from the matrix row")
         for label in ("last", "best"):
             f = run / f"{label}.pt"
@@ -89,7 +91,7 @@ def run_problems(results_dir: Path, rows, freeze, *, allow_unfrozen: bool, tiny_
     if len({json.dumps(e, sort_keys=True) for e in envs.values()}) > 1:
         problems.append("runs were produced in different software/GPU environments")
     if not allow_unfrozen:
-        frozen = freeze["to_fill_at_freeze"].get("frozen_commit")
+        frozen = freeze.get("code_commit")
         if any(c[0] != frozen or c[1] for c in codes.values()):
             problems.append("runs were not produced by the frozen commit with a clean working tree")
     return problems, facts
@@ -136,3 +138,71 @@ def verify_manifest(path, results_dir, rows, freeze, analysis_script, *, allow_u
     if problems:
         raise ManifestError("manifest verification failed:\n  - " + "\n  - ".join(problems))
     return UnsealToken(_ISSUE_KEY, hashlib.sha256(path.read_bytes()).hexdigest())
+
+
+# ---------------------------------------------------------------------------------- evaluation seal / freeze manifest
+EVAL_SEAL_SCHEMA = "prereg-seal-1"
+FREEZE_SCHEMA = "prereg-freeze-1"
+
+
+def required_run_files(hard_enabled: bool) -> list[str]:
+    """Run-directory-relative files the analysis requires for every run."""
+    files = ["config.json", "summary.json", "last/standard.json", "best/standard.json"]
+    return files + (["last/hard.json"] if hard_enabled else [])
+
+
+def build_evaluation_seal(results_dir, rows, freeze, pretest_manifest, freeze_manifest, *, synthetic=False) -> dict:
+    """Seal written AFTER the final evaluation: the hash of every file the analysis will read, plus the facts the analysis
+    must be able to rely on (training complete, checkpoints unchanged since the pre-test manifest, failed attempts)."""
+    results_dir = Path(results_dir)
+    m = json.loads(Path(pretest_manifest).read_text(encoding="utf-8"))
+    if m.get("version") != MANIFEST_VERSION or m.get("complete") is not True:
+        raise ManifestError("the pre-test integrity manifest is missing or not complete")
+    hard = freeze.get("hard_enabled")
+    if not isinstance(hard, bool):
+        raise ManifestError("hard_enabled must be declared in the frozen configuration")
+    problems, files = [], {}
+    for r in rows:
+        name, run = r["run_name"], results_dir / "runs" / r["run_name"]
+        facts = m["runs"].get(name)
+        if facts is None or not (run / "run_complete.json").exists():
+            problems.append(f"{name}: not part of the pre-test manifest / not complete")
+            continue
+        for label in ("last", "best"):
+            f = run / f"{label}.pt"
+            if not f.exists() or _sha_file(f) != facts[f"{label}_file_sha256"] or _state_sha(f) != facts[f"{label}_state_sha256"]:
+                problems.append(f"{name}: {label}.pt changed since the pre-test manifest")
+        for rel in required_run_files(hard):
+            p = run / rel
+            if not p.is_file():
+                problems.append(f"{name}: required file {rel} missing")
+            else:
+                files[f"{name}/{rel}"] = _sha_file(p)
+        if not hard and (run / "last" / "hard.json").exists():
+            problems.append(f"{name}: last/hard.json exists but hard_enabled is false")
+    if problems:
+        raise ManifestError("cannot seal the evaluation:\n  - " + "\n  - ".join(problems))
+    attempts_file = results_dir / "attempts.jsonl"
+    attempts = [json.loads(x) for x in attempts_file.read_text().splitlines() if x.strip()] if attempts_file.exists() else []
+    return {"schema_version": EVAL_SEAL_SCHEMA, "synthetic": synthetic, "freeze_manifest_sha256": _sha_file(freeze_manifest),
+            "all_training_complete": True, "all_checkpoint_checks_passed": True, "runs": [r["run_name"] for r in rows],
+            "files": files, "attempts": attempts}
+
+
+def build_freeze_manifest(root, matrix_path, config_path, analysis_script, dependency_lock, extra_frozen=(), *, spec_version="0.3.2") -> dict:
+    """The freeze manifest of ANALYSIS_SPEC section 1.1.  `project_root` is written as "." (resolved against an explicit
+    --project-root when the analysis runs) so that no machine path is committed.  Requires a clean tree."""
+    from .provenance import code_version
+
+    root = Path(root)
+    cv = code_version(root)
+    if cv["git_dirty"] or not cv["git_sha"]:
+        raise ManifestError("freeze manifest requires a clean git working tree")
+    rels = [str(Path(p).as_posix()) for p in (matrix_path, config_path, analysis_script, dependency_lock, *extra_frozen)]
+    missing = [r for r in rels if not (root / r).is_file()]
+    if missing:
+        raise ManifestError(f"frozen files missing: {missing}")
+    return {"schema_version": FREEZE_SCHEMA, "synthetic": False, "complete": True, "spec_version": spec_version, "code_commit": cv["git_sha"],
+            "project_root": ".", "matrix_path": str(Path(matrix_path).as_posix()), "config_path": str(Path(config_path).as_posix()),
+            "analysis_script_path": str(Path(analysis_script).as_posix()), "dependency_lock_path": str(Path(dependency_lock).as_posix()),
+            "frozen_files": {r: _sha_file(root / r) for r in rels}, "seal_path": "results_prereg/evaluation_seal.json"}

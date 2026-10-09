@@ -16,13 +16,21 @@ from pacman_rl import seal
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import prereg as runner  # noqa: E402
 
-FREEZE = PR.load_freeze()
+FREEZE = {**PR.load_freeze(), "hard_enabled": False}  # the draft file leaves it open; the tests declare it
 TINY = dict(total_env_steps=96, learn_start=32, eval_every=48, buffer=600, batch=8, device="cpu", val_set="smoke_eval")
 ROWS = [r for r in PR.load_matrix() if r["arch"] == "cnn2" and r["seed"] == 100]  # the n=1 and n=3 runs of one seed
 
 
+@pytest.fixture(scope="module", autouse=True)
+def declared_hard_flag():
+    mp = pytest.MonkeyPatch()
+    mp.setattr(PR, "load_freeze", lambda path=None: FREEZE)
+    yield
+    mp.undo()
+
+
 @pytest.fixture(scope="module")
-def study(tmp_path_factory):
+def study(tmp_path_factory, declared_hard_flag):
     results = tmp_path_factory.mktemp("study")
     assert set(runner.run_matrix(ROWS, FREEZE, results, 1, TINY).values()) == {"done"}
     script = results / "analysis.py"
@@ -191,27 +199,34 @@ def test_final_eval_needs_the_explicit_unseal_flag(fresh):
     results, script = fresh
     with pytest.raises(runner.Refused, match="--unseal"):
         final(results, script, unseal=False)
-    assert not (results / "runs" / "prereg_cnn2_n1_s100" / "eval_final").exists() and not (results / "unseal_log.jsonl").exists()
+    run = results / "runs" / "prereg_cnn2_n1_s100"
+    assert not (run / "last").exists() and not (run / "best").exists() and not (results / "unseal_log.jsonl").exists()
 
 
-def test_final_eval_is_one_shot_and_writes_last_and_best_separately(fresh):
+def test_final_eval_is_one_shot_writes_the_contract_layout_and_format(fresh):
     results, script = fresh
     index = final(results, script, unseal=True)
     assert set(index) == {r["run_name"] for r in ROWS}
     for r in ROWS:
-        out = results / "runs" / r["run_name"] / "eval_final"
-        last = json.loads((out / "last" / "standard.json").read_text())
-        best = json.loads((out / "best" / "standard.json").read_text())
-        assert last["split"] == "prereg_test" and [x["seed"] for x in last["records"]] == list(range(50000, 50005))
-        assert last["extra"]["torch_threads"] == 1 and last["extra"]["eval_device"] == "cpu" and best["agent"].endswith("/best")
-        assert all("truncated" in x for x in last["records"])
+        run = results / "runs" / r["run_name"]
+        last = json.loads((run / "last" / "standard.json").read_text())
+        best = json.loads((run / "best" / "standard.json").read_text())
+        for ckpt, doc in (("last", last), ("best", best)):
+            assert set(doc) == {"schema_version", "meta", "records"} and doc["schema_version"] == "prereg-eval-1"
+            m = doc["meta"]
+            assert m["synthetic"] is False and m["run_name"] == r["run_name"] and m["arch"] == r["arch"] and m["n_step"] == r["n_step"]
+            assert m["train_seed"] == 100 and m["checkpoint"] == ckpt and m["scenario"] == "standard" and m["device"] == "cpu" and m["torch_threads"] == 1
+            assert len(m["weights_sha256"]) == 64 and len(m["code_commit"]) == 40 and isinstance(m["checkpoint_step"], int)
+            assert [x["seed"] for x in doc["records"]] == list(range(50000, 50005))  # throw-away partition of this module
+            assert all(set(x) == {"seed", "score", "steps", "died", "won", "truncated"} for x in doc["records"])
+        assert not (run / "last" / "hard.json").exists()  # hard_enabled is false
     assert len((results / "unseal_log.jsonl").read_text().splitlines()) == 1
     assert "score" not in json.dumps(index)  # only file hashes are indexed
-    # a second attempt cannot even be unsealed (the runs now contain eval_final) and never overwrites
-    snapshot = (results / "runs" / ROWS[0]["run_name"] / "eval_final" / "last" / "standard.json").read_bytes()
+    # a second attempt cannot even be unsealed (the runs now contain last/ and best/) and never overwrites
+    snap = (results / "runs" / ROWS[0]["run_name"] / "last" / "standard.json").read_bytes()
     with pytest.raises((runner.Refused, FileExistsError)):
         final(results, script, unseal=True)
-    assert (results / "runs" / ROWS[0]["run_name"] / "eval_final" / "last" / "standard.json").read_bytes() == snapshot
+    assert (results / "runs" / ROWS[0]["run_name"] / "last" / "standard.json").read_bytes() == snap
 
 
 def test_identical_best_and_last_are_evaluated_once_and_say_so(fresh):
@@ -219,24 +234,89 @@ def test_identical_best_and_last_are_evaluated_once_and_say_so(fresh):
     name = ROWS[0]["run_name"]
     run = results / "runs" / name
     shutil.copy(run / "last.pt", run / "best.pt")  # make best identical to last, then re-record the run (a unit-level setup)
-    from pacman_rl.provenance import file_sha256
-
     d = json.loads((run / "run_complete.json").read_text())
     d["best_file_sha256"], d["best_state_sha256"] = d["last_file_sha256"], d["last_state_sha256"]
     (run / "run_complete.json").write_text(json.dumps(d))
-    written = runner.final_eval_run(results, name, seal.UnsealToken(seal._ISSUE_KEY, "t"))
-    best = json.loads((run / "eval_final" / "best" / "standard.json").read_text())
-    last = json.loads((run / "eval_final" / "last" / "standard.json").read_text())
-    assert best["records"] == last["records"] and best["extra"]["checkpoint"]["reused_from"] == "last"
-    assert set(written) == {"last/standard", "best/standard"} and file_sha256(run / "best.pt") == d["best_file_sha256"]
+    written = runner.final_eval_run(results, name, seal.UnsealToken(seal._ISSUE_KEY, "t"), FREEZE)
+    best = json.loads((run / "best" / "standard.json").read_text())
+    last = json.loads((run / "last" / "standard.json").read_text())
+    assert best["records"] == last["records"] and best["meta"]["reused_from"] == "last" and best["meta"]["checkpoint"] == "best"
+    assert best["meta"]["weights_sha256"] == last["meta"]["weights_sha256"]
+    assert set(written) == {"last/standard", "best/standard"}
 
 
-def test_optional_hard_scenario_is_last_only(fresh):
+def test_optional_hard_scenario_is_last_only_and_only_if_declared(fresh):
     results, script = fresh
-    final(results, script, unseal=True, hard=True)
-    out = results / "runs" / ROWS[0]["run_name"] / "eval_final"
-    assert (out / "last" / "hard.json").exists() and not (out / "best" / "hard.json").exists()
+    name = ROWS[0]["run_name"]
+    token = seal.UnsealToken(seal._ISSUE_KEY, "t")
+    with pytest.raises(runner.Refused, match="hard_enabled must be declared"):
+        runner.final_eval_run(results, name, token, {**FREEZE, "hard_enabled": None})
+    runner.final_eval_run(results, name, token, {**FREEZE, "hard_enabled": True})
+    run = results / "runs" / name
+    h = json.loads((run / "last" / "hard.json").read_text())
+    assert h["meta"]["scenario"] == "hard" and h["meta"]["checkpoint"] == "last" and not (run / "best" / "hard.json").exists()
 
 
 def test_the_real_sealed_seeds_are_not_what_these_tests_ran_on():
     assert ev.SEED_SETS["prereg_test"] == list(range(50000, 50005))  # the autouse fixture replaced the partition
+
+
+# ------------------------------------------------------------------ evaluation seal and freeze manifest (analysis inputs)
+def test_evaluation_seal_hashes_every_file_the_analysis_reads(fresh):
+    results, script = fresh
+    final(results, script, unseal=True)
+    fm = results / "freeze_manifest.json"
+    fm.write_text("{}")
+    out = runner.make_evaluation_seal(results, results / "m.json", fm, rows=ROWS, freeze=FREEZE)
+    obj = json.loads((results / "evaluation_seal.json").read_text())
+    assert obj["schema_version"] == "prereg-seal-1" and obj["synthetic"] is False and obj["all_training_complete"] is True
+    assert obj["all_checkpoint_checks_passed"] is True and obj["runs"] == [r["run_name"] for r in ROWS] and obj["attempts"] == []
+    from pacman_rl.provenance import file_sha256
+
+    assert obj["freeze_manifest_sha256"] == file_sha256(fm)
+    want = {f"{r['run_name']}/{rel}" for r in ROWS for rel in ("config.json", "summary.json", "last/standard.json", "best/standard.json")}
+    assert set(obj["files"]) == want  # no hard files: hard_enabled is false
+    for key, h in obj["files"].items():
+        assert h == file_sha256(results / "runs" / key.split("/", 1)[0] / key.split("/", 1)[1])
+    with pytest.raises(runner.Refused, match="already exists"):
+        runner.make_evaluation_seal(results, results / "m.json", fm, rows=ROWS, freeze=FREEZE)
+
+
+def test_evaluation_seal_refuses_missing_files_changed_checkpoints_and_undeclared_hard(fresh):
+    results, script = fresh
+    final(results, script, unseal=True)
+    fm = results / "fm.json"
+    fm.write_text("{}")
+    run = results / "runs" / ROWS[0]["run_name"]
+    (run / "best" / "standard.json").rename(run / "best" / "standard.json.moved")
+    with pytest.raises(seal.ManifestError, match="required file best/standard.json missing"):
+        seal.build_evaluation_seal(results, ROWS, FREEZE, results / "m.json", fm)
+    (run / "best" / "standard.json.moved").rename(run / "best" / "standard.json")
+    (run / "last" / "hard.json").write_text("{}")
+    with pytest.raises(seal.ManifestError, match="hard_enabled is false"):
+        seal.build_evaluation_seal(results, ROWS, FREEZE, results / "m.json", fm)
+    (run / "last" / "hard.json").unlink()
+    (run / "last.pt").write_bytes((run / "last.pt").read_bytes() + b"\0")
+    with pytest.raises(seal.ManifestError, match="changed since the pre-test manifest"):
+        seal.build_evaluation_seal(results, ROWS, FREEZE, results / "m.json", fm)
+
+
+def test_freeze_manifest_requires_a_clean_tree_and_records_hashes(tmp_path):
+    import subprocess
+
+    def git(*a):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *a], cwd=tmp_path, check=True, capture_output=True)
+
+    (tmp_path / "docs" / "prereg").mkdir(parents=True)
+    for rel in ("docs/prereg/matrix.csv", "docs/prereg/frozen_config_v0.3.2.json", "docs/prereg/analysis.py", "docs/prereg/lock.txt"):
+        (tmp_path / rel).write_text(rel)
+    git("init", "-q")
+    git("add", "-A")
+    git("commit", "-qm", "c")
+    obj = seal.build_freeze_manifest(tmp_path, "docs/prereg/matrix.csv", "docs/prereg/frozen_config_v0.3.2.json", "docs/prereg/analysis.py", "docs/prereg/lock.txt")
+    assert obj["schema_version"] == "prereg-freeze-1" and obj["complete"] is True and obj["synthetic"] is False and len(obj["code_commit"]) == 40
+    assert obj["project_root"] == "." and set(obj["frozen_files"]) == {"docs/prereg/matrix.csv", "docs/prereg/frozen_config_v0.3.2.json", "docs/prereg/analysis.py", "docs/prereg/lock.txt"}
+    assert str(tmp_path) not in json.dumps(obj) and obj["seal_path"] == "results_prereg/evaluation_seal.json"
+    (tmp_path / "docs/prereg/analysis.py").write_text("changed")
+    with pytest.raises(seal.ManifestError, match="clean"):
+        seal.build_freeze_manifest(tmp_path, "docs/prereg/matrix.csv", "docs/prereg/frozen_config_v0.3.2.json", "docs/prereg/analysis.py", "docs/prereg/lock.txt")

@@ -38,8 +38,8 @@ def test_every_row_maps_to_a_complete_explicit_training_configuration():
             assert d[k] == r[k], (r["run_name"], k)
         assert d["val_set"] == "prereg_val" and d["device"] == "cuda"
         # the settings the CSV does not carry are frozen explicitly AND equal the code's defaults (no silent drift)
-        for k, v in FREEZE["fixed_hparams"].items():
-            assert d[k] == v == getattr(TrainConfig(), k), k
+        for k in PR.FROZEN_HPARAMS:
+            assert d[k] == FREEZE[k] == getattr(TrainConfig(), k), k
         assert d["eps_frac"] * d["total_env_steps"] == 120000  # exploration anneals over the first 120000 transitions
         # round trip through the real command line: every field passed explicitly, nothing left to defaults
         ns = cli.build_parser().parse_args(["train", *PR.train_args(cfg, r["run_name"]), "--no-resume"])
@@ -102,10 +102,15 @@ def test_freeze_problems_lists_every_open_field():
     probs = runner.freeze_problems(FREEZE)
     for k in runner.TO_FILL:
         assert any(k in p for p in probs)
+    for k in runner.TOP_LEVEL_TO_FILL:
+        assert any(p.startswith(f"{k} is not filled") for p in probs)
     frozen = json.loads(json.dumps(FREEZE))
     frozen["status"] = "frozen"
+    frozen.update(machine_id="m", worker_count=2, code_commit="c" * 40, hard_enabled=False)
     frozen["to_fill_at_freeze"].update({k: "x" for k in runner.TO_FILL}, power_and_sleep_settings_confirmed=True)
     assert runner.freeze_problems(frozen) == []
+    frozen["val_seeds"] = list(range(20000, 20050))  # the v0.2 range: no longer what the code uses
+    assert any("val_seeds differs" in p for p in runner.freeze_problems(frozen))
 
 
 # ------------------------------------------------------------------ the runner
@@ -174,12 +179,14 @@ def test_finalize_rejects_test_outputs_and_config_drift(two_runs, tmp_path):
     d = tmp_path / "copy"
     shutil.copytree(results / "runs" / r["run_name"], d)
     (d / "run_complete.json").unlink()
+    shutil.copy(d / "train_config.json", d / "config.json")  # back to what train() wrote, as before finalize
     cfg = PR.train_config(r, FREEZE, **TINY)
     (d / "test_standard.json").write_text("{}")
     assert any("forbidden" in p for p in runner.finalize(d, r["run_name"], cfg, 1, r["order"]))
     (d / "test_standard.json").unlink()
     assert runner.finalize(d, r["run_name"], cfg, 1, r["order"]) == []
     (d / "run_complete.json").unlink()
+    shutil.copy(d / "train_config.json", d / "config.json")
     drift = PR.train_config(r, FREEZE, **{**TINY, "lr": 0.001})
     assert any("config.json differs" in p for p in runner.finalize(d, r["run_name"], drift, 1, r["order"]))
     (d / "last.pt").unlink()
@@ -199,3 +206,37 @@ def test_smoke_driver_reports_throughput_memory_hash_pairs_and_resume(tmp_path):
     assert str(tmp_path) not in text and set(rep["environment"]) == set(P.ENV_KEYS)
     cfg = json.loads((tmp_path / "runs" / "smoke_cnn2_n1_s900" / "config.json").read_text())
     assert cfg["seed"] == 900 and cfg["val_set"] == "smoke_eval"
+
+
+# ------------------------------------------------------------------ v0.3.2 interfaces
+def test_frozen_config_matches_the_code_and_the_spec_field_names():
+    assert PR.check_frozen_config(FREEZE) == []
+    for k in ("eps_start", "eps_end", "eps_frac", "tau", "grad_clip", "val_seeds", "test_seeds", "smoke_eval_seeds", "smoke_run_seeds",
+              "eval_episodes", "final_eval_device", "final_eval_threads", "hard_enabled", "code_commit", "machine_id", "train_device",
+              "validation_device", "worker_count", "max_episode_steps", "train_scenario", "hard_chase_p"):
+        assert k in FREEZE, k
+    assert FREEZE["val_seeds"] == list(range(21000, 21050)) and FREEZE["test_seeds"] == list(range(30000, 30300))
+    assert FREEZE["smoke_eval_seeds"] == list(range(40000, 40010)) and FREEZE["smoke_run_seeds"] == [900, 901]
+    assert PR.MATRIX_FILE.name == "matrix.csv" and PR.FREEZE_FILE.name == "frozen_config_v0.3.2.json"
+    bad = {**FREEZE, "eps_end": 0.01}
+    assert any("eps_end" in p for p in PR.check_frozen_config(bad))
+
+
+def test_completed_run_has_the_contract_files(two_runs):
+    results, rows, _ = two_runs
+    for r in rows:
+        d = results / "runs" / r["run_name"]
+        cfg = json.loads((d / "config.json").read_text())
+        for col in PR.COLUMNS:
+            assert col in cfg, col  # every CSV column (order, run_name, ..., primary_checkpoint) is in the merged effective config
+        for k in ("eps_start", "eps_end", "eps_frac", "tau", "grad_clip", "code_commit", "frozen_config_sha256", "val_seeds", "test_seeds",
+                  "eval_episodes", "final_eval_device", "final_eval_threads", "max_episode_steps", "train_scenario"):
+            assert k in cfg, k
+        assert cfg["frozen_config_sha256"] == P.file_sha256(PR.FREEZE_FILE) and len(cfg["code_commit"]) == 40
+        assert (d / "train_config.json").exists()  # what train() itself wrote
+        s = json.loads((d / "summary.json").read_text())
+        assert s["run_name"] == r["run_name"] and s["total_env_steps"] == 96 and s["validation_steps"] == [48, 96]
+        assert isinstance(s["replay"]["size"], int) and isinstance(s["actual_updates"], int) and s["validation_episodes_each"] == 10
+        assert len(s["initial_state_dict_sha256"]) == 64
+        assert s["checkpoints"]["last"] == {"step": 96, "weights_sha256": json.loads((d / "run_complete.json").read_text())["last_state_sha256"]}
+        assert s["checkpoints"]["best"]["step"] in s["validation_steps"]

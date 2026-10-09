@@ -3,12 +3,13 @@
 This directory holds the **machine-readable part** of the preregistered study of n-step (1 vs 3) on three
 convolutional architectures (cnn2, res4, res8) with five training seeds. The preregistration *document* itself
 is not here yet: it is committed once, as a timestamped freeze commit, after the freeze checklist is complete.
-Until then `freeze_config.json` has `"status": "draft"` and the formal runner refuses to start.
+Until then `frozen_config_v0.3.2.json` has `"status": "draft"` and the formal runner refuses to start.
 
 | file | role |
 |---|---|
-| `matrix_v0.3.1.csv` | the 30 runs, **byte-identical** to the registered file (SHA-256 `5cbd4e7b…59f0dfe`, pinned in `pacman_rl/prereg.py` and tested) |
-| `freeze_config.json` | seeds, fixed hyper-parameters not carried by the CSV, final-evaluation settings and the fields to fill at the freeze (machine, workers, frozen commit, analysis-script hash, ...) |
+| `matrix.csv` | the 30 runs, **byte-identical** to the registered file under its original name (SHA-256 `5cbd4e7b…59f0dfe`, pinned in `pacman_rl/prereg.py` and tested); never renamed or copied because of a document version |
+| `frozen_config_v0.3.2.json` | field names of ANALYSIS_SPEC 2.1: the five hyper-parameters the CSV does not carry (`eps_start/eps_end/eps_frac/tau/grad_clip`), the explicit seed arrays (checked against the constants the code uses), final-evaluation device/threads, `hard_enabled`, and the fields to fill at the freeze (`machine_id`, `worker_count`, `code_commit`, analysis-script hash, ...) |
+| `freeze_manifest.json` | written at the freeze by `prereg.py freeze-manifest` (clean tree, hashes of the frozen files; `project_root` is `"."`, resolved against an explicit root, so no machine path is committed) |
 
 **Run order.** The order of the runs is fixed by the `order` column of the matrix file and the runner dispatches in
 that order. It is not generated from any scheduling seed. The tests check the file's hash and that every seed block
@@ -49,3 +50,15 @@ Smoke scores are for plumbing only; nothing is selected or tuned from them.
    filled (110000 steps); read peak working set / commit and `cuda_max_*` in the report; repeat with the intended worker count.
 3. Send back `results_prereg_smoke/smoke_report.json` (it holds only allow-listed environment fields and no paths) and the
    observed wall time.  Do not commit `results_prereg_smoke/` (it is git-ignored) and do not use smoke scores for any decision.
+
+## Run directory layout (formal runs, `results_prereg/runs/<run_name>/`)
+
+`config.json` (merged effective configuration: every CSV column, the five CSV-external settings, the frozen supplementary values,
+`run_name`, `code_commit`, `frozen_config_sha256`; what `train()` itself wrote is kept as `train_config.json`), `summary.json`
+(`run_name`, `total_env_steps`, `replay.size`, `actual_updates`, the 15 `validation_steps`, `validation_episodes_each`,
+`initial_state_dict_sha256`, `checkpoints.last/best` with step and canonical weight hash, plus the earlier fields),
+`last.pt`, `best.pt`, `train_log.jsonl`, `code_version.json`, `environment.json`, `run_complete.json`, and after the sealed final
+evaluation `last/standard.json`, `best/standard.json` (and `last/hard.json` only if the frozen configuration enables hard) in the
+`prereg-eval-1` format (`schema_version`, `meta`, `records` with the `truncated` field). `results_prereg/evaluation_seal.json`
+(`prereg.py seal-eval`) lists the SHA-256 of every file the analysis reads. Tie-break of the greedy action: see `docs/PLAN.md`
+deviation 9.

@@ -16,8 +16,8 @@ from .dqn import TrainConfig
 from .provenance import ROOT, file_sha256
 
 PREREG_DIR = ROOT / "docs" / "prereg"
-MATRIX_FILE = PREREG_DIR / "matrix_v0.3.1.csv"
-FREEZE_FILE = PREREG_DIR / "freeze_config.json"
+MATRIX_FILE = PREREG_DIR / "matrix.csv"
+FREEZE_FILE = PREREG_DIR / "frozen_config_v0.3.2.json"
 MATRIX_SHA256 = "5cbd4e7b2cf79f65c96180acfc61b1914fe2e8521c036218bc7c9a4db59f0dfe"
 COLUMNS = ("order", "run_name", "arch", "n_step", "seed", "total_env_steps", "obs", "width", "double", "dueling", "lr", "gamma",
            "n_envs", "steps_per_update", "batch", "buffer", "learn_start", "eval_every", "threads", "device", "primary_checkpoint")
@@ -26,6 +26,7 @@ ARCHS, NSTEPS, SEEDS = ("cnn2", "res4", "res8"), (1, 3), (100, 101, 102, 103, 10
 FIXED_ROW = {"total_env_steps": 300000, "obs": "fields", "width": 16, "double": True, "dueling": True, "lr": 0.0005, "gamma": 0.99,
              "n_envs": 8, "steps_per_update": 4, "batch": 32, "buffer": 100000, "learn_start": 4000, "eval_every": 20000,
              "threads": 1, "device": "cuda", "primary_checkpoint": "last"}
+FROZEN_HPARAMS = ("eps_start", "eps_end", "eps_frac", "tau", "grad_clip")
 _INT = {"order", "n_step", "seed", "total_env_steps", "width", "n_envs", "steps_per_update", "batch", "buffer", "learn_start", "eval_every", "threads"}
 _FLOAT = {"lr", "gamma"}
 _BOOL = {"double", "dueling"}
@@ -86,8 +87,8 @@ def train_config(row: dict, freeze: dict, **overrides) -> TrainConfig:
     """TrainConfig of a run: matrix row + fixed hyper-parameters + selection set of the frozen configuration."""
     kw = {k: row[k] for k in ("arch", "obs", "width", "double", "dueling", "n_step", "gamma", "lr", "batch", "buffer", "learn_start",
                               "n_envs", "steps_per_update", "total_env_steps", "eval_every", "seed", "threads", "device")}
-    kw.update(freeze["fixed_hparams"])
-    kw["val_set"] = freeze["seeds"]["val_set"]
+    kw.update({k: freeze[k] for k in FROZEN_HPARAMS})  # the five settings the CSV does not carry
+    kw["val_set"] = freeze["val_set"]
     kw.update(overrides)
     return TrainConfig(**kw)
 
@@ -107,3 +108,39 @@ def train_args(cfg: TrainConfig, name: str) -> list[str]:
 
 def expected_config_json(cfg: TrainConfig) -> dict:
     return json.loads(json.dumps(asdict(cfg)))
+
+
+def check_frozen_config(freeze: dict) -> list[str]:
+    """The frozen configuration must agree with what the code really uses (seed arrays, defaults, scenario facts)."""
+    from . import evaluate as ev
+    from .env import HARD, STANDARD
+
+    problems = []
+    for key, name in (("val_seeds", freeze["val_set"]), ("test_seeds", freeze["test_set"]), ("smoke_eval_seeds", freeze["smoke_val_set"])):
+        if freeze[key] != ev.SEED_SETS[name]:
+            problems.append(f"{key} differs from the seeds the code uses for {name!r}")
+    if freeze["eval_episodes"] != len(freeze["val_seeds"]):
+        problems.append("eval_episodes != number of validation seeds")
+    for k in FROZEN_HPARAMS:
+        if freeze[k] != getattr(TrainConfig(), k):
+            problems.append(f"{k}={freeze[k]} differs from the code default {getattr(TrainConfig(), k)} (it would be passed explicitly, but the defaults must not drift)")
+    if freeze["max_episode_steps"] != STANDARD.max_steps or freeze["hard_chase_p"] != HARD.chase_prob:
+        problems.append("max_episode_steps / hard_chase_p differ from the environment definitions")
+    if freeze["matrix_sha256"] != MATRIX_SHA256:
+        problems.append("frozen config matrix_sha256 differs from the pinned value")
+    if freeze["formal_run_seeds"] != list(SEEDS):
+        problems.append("formal_run_seeds differs from the matrix design")
+    return problems
+
+
+def effective_config(row: dict, freeze: dict, cfg: TrainConfig, code_commit: str | None, frozen_config_sha256: str) -> dict:
+    """The merged effective configuration written as runs/<run>/config.json: every TrainConfig field actually used (this
+    covers each CSV column and the five CSV-external settings) plus the run identity and the frozen supplementary values."""
+    out = expected_config_json(cfg)
+    out.update({"order": row["order"], "run_name": row["run_name"], "primary_checkpoint": row["primary_checkpoint"],
+                "code_commit": code_commit, "frozen_config_sha256": frozen_config_sha256})
+    for k in ("val_seeds", "test_seeds", "smoke_eval_seeds", "smoke_run_seeds", "eval_episodes", "final_eval_device", "final_eval_threads",
+              "hard_enabled", "machine_id", "train_device", "validation_device", "worker_count", "max_episode_steps", "train_scenario",
+              "hard_chase_p"):
+        out[k] = freeze[k]
+    return out
