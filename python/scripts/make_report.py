@@ -186,7 +186,10 @@ def limitations(acc_text: str) -> str:
     steps = (L.load(L.RUNS / "res4_s0" / "config.json") or {}).get("total_env_steps", "?")
     out = []
     if "S1  SHOULD PASS" in acc_text:
-        out.append("- **S1 达成但没有超过强手写启发式**:最终神经网络(MLP)与 `safe-heuristic` 的差距在 -3% 的门槛之内,统计上难以区分(第 7 节配对置信区间),但并不比它好。")
+        if "shown: True" in acc_text:
+            out.append("- **S1 达成,且在该置信区间下非劣性成立**;但这个区间只反映测试局的抽样波动,不含训练种子间方差,而且 MLP 并不比启发式好。")
+        else:
+            out.append("- **S1 按预设的点估计门槛通过,但等价/非劣性并未建立**:均值差在 -3% 之内、差异不显著(第 7 节配对置信区间跨零),可是区间下界低于 -3% 的界限;该区间还不含训练种子间方差。这不等于\"与启发式相当\",MLP 并不比它好。")
     else:
         out.append("- **S1 未达成**:最终神经网络(MLP)的平均得分低于强手写启发式 `safe-heuristic` 超过 3%,差距见第 7 节。\"认真写规则\"仍然更强。")
     below = [a for a in conv if means[a] < mlp]
@@ -199,10 +202,10 @@ def limitations(acc_text: str) -> str:
     if d is not None and v is not None:
         diff, lo, hi = L.paired(v, d)
         if lo > 0:
-            out.append("- **默认配方对卷积网络可能次优**:所有架构共用同一套超参(未逐架构调参),而消融显示去掉 n 步在 ResNet-4 上得分明显更高(第 5 节);原因目前只是假设(例如 ε-贪心探索下 n 步回报带入探索动作的偏差),**没有被实验验证**。因此\"深度无收益\"也可能部分来自配方,而不是网络深度本身。")
+            out.append("- **默认配方对卷积网络可能次优**:所有架构共用同一套超参(未逐架构调参),而消融显示去掉 n 步在 ResNet-4 上得分明显更高(第 5 节);原因目前只是假设(例如 ε-贪心探索下 n 步回报带入探索动作的偏差),**没有被实验验证**。因此\"深度无收益\"可能部分来自配方,但**目前只有 ResNet-4 一个深度点有 n 步 = 1 的数据**,无法区分配方与深度的交互,这只是待检验的假设。")
         else:
             out.append("- 消融里去掉 n 步对 ResNet-4 没有显著提升(第 5 节)。所有架构共用同一套超参,未逐架构调参。")
-    out.append("- **各结论的稳健性**:云端 CPU 套与本地 GPU 套两次独立实验里,只有\"去掉 n 步对 ResNet-4 有利\"和\"距离场有帮助\"复现;去掉 Dueling / Double 的效应符号相反,不应据此取舍。详见 `docs/RESULTS_COMPARISON.md`(自动生成)。")
+    out.append("- **各结论的稳健性**:云端 CPU 套与本地 GPU 套两次相互独立的运行里(同代码、同种子、同超参,第二次是在看到第一次结论之后运行的;不是独立实现),只有\"去掉 n 步对 ResNet-4 有利\"和\"距离场有帮助\"复现;去掉 Dueling / Double 的效应符号相反,不应据此取舍。详见 `docs/RESULTS_COMPARISON.md`(自动生成)。")
     out.append("- **输入里有特权信息**:MLP 的工程特征和卷积网络的距离场都由游戏内部状态(BFS 距离)算出;原始网格对照显示距离场对 ResNet-4 有帮助。MLP 表现最好,很可能因为特征直接给出了最短路信息,而不是\"神经网络更擅长\"。")
     hard = [float(np.mean(L.per_episode(L.baseline(b, "hard"), "died"))) for b in L.BASELINES] + \
            [float(arrays_from_runs(L.run_names(a), "hard")[1].mean()) for a in L.ARCHS]
@@ -210,9 +213,9 @@ def limitations(acc_text: str) -> str:
     out.append("- **只有一张地图**,随机起点提供了状态多样性,但不能声称泛化到别的地图。")
     out.append("- **统计力有限**:每个配置 3 个训练种子,逐局 CI 不含种子间方差;差距较小的比较(例如 ResNet-2 与 ResNet-4)不应过度解读。")
     if is_gpu:
-        out.append(f"- **算力与过程**:GPU 上的补充实验({steps} 步/运行);机器信息、中断续训的运行、内存调度等过程细节见同目录 `LOCAL_RUN_REPORT.md`。被续训过的运行:{resumed_runs()}。与云端 CPU 套的并排对比见 `docs/RESULTS_COMPARISON.md`。")
+        out.append(f"- **算力与过程**:GPU 上的补充实验({steps} 步/运行);机器信息、中断续训的运行、内存调度等过程细节见同目录 `LOCAL_RUN_REPORT.md`。被续训过的运行:{resumed_runs()}。续训**不是逐位等价**:环境状态和 n 步待处理队列没有存档(每个环境最多丢 2 条 transition),新回合使用未用过的种子,对训练分布的影响未量化;这些运行的 `train_log.jsonl` 可能有重复/倒退的行(权重与 summary 不受影响)。评估同样依赖设备:GPU 上评估的结果换到 CPU 复算,逐局会不同。与云端 CPU 套的并排对比见 `docs/RESULTS_COMPARISON.md`。")
     else:
-        out.append(f"- **算力与过程**:CPU、单进程、{steps} 步/运行。过程中两个卷积运行曾被内存不足杀掉后重跑,`res8_s1`、`res8_s2` 使用旧的 float32 回放(与 uint8 回放等价到 1 ulp),虚拟机挂起后部分运行从断点续训(详见 `docs/PLAN.md` 偏差记录)。被续训过的运行:{resumed_runs()}。GPU 上更长训练的补充实验见 `results_gpu/RESULTS.md` 与 `docs/RESULTS_COMPARISON.md`。")
+        out.append(f"- **算力与过程**:CPU、单进程、{steps} 步/运行。过程中两个卷积运行曾被内存不足杀掉后重跑,`res8_s1`、`res8_s2` 使用旧的 float32 回放(与 uint8 回放等价到 1 ulp),虚拟机挂起后部分运行从断点续训(详见 `docs/PLAN.md` 偏差记录)。被续训过的运行:{resumed_runs()}。续训**不是逐位等价**:环境状态和 n 步待处理队列没有存档(每个环境最多丢 2 条 transition),新回合使用未用过的种子,对训练分布的影响未量化;这些运行的 `train_log.jsonl` 可能有重复/倒退的行(权重与 summary 不受影响)。GPU 上更长训练的补充实验见 `results_gpu/RESULTS.md` 与 `docs/RESULTS_COMPARISON.md`。")
     return "\n".join(out)
 
 
@@ -245,7 +248,7 @@ def main():
 
 ## 2. 对原 Java 代码的复刻校验
 {jtxt}
-复刻版 `legacy` 与之统计上不可区分(见 `python/tests/test_baselines.py::test_legacy_replica_matches_original_java_run`)。
+复刻版 `legacy` 与之在得分、步数、死亡率的均值(z 检验)和得分分布(KS 检验)上**未检出显著差异**(见 `python/tests/test_baselines.py::test_legacy_replica_matches_original_java_run`)。这只是分布层面的检验:Java 无随机种子,不能逐局对照;终局时序等差异见 `docs/PLAN.md` 第 4 节。
 注意:仓库里 `data/Score.txt` 中的 300+ 高分局并不代表该默认配置的真实表现。
 
 ## 3. 标准场景(测试集 300 局)

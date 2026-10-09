@@ -4,7 +4,9 @@
 * ``cnn2``  - 2 conv layers on the (C, 24, 32) grid; receptive field 5.  C = 7 with the BFS
               distance fields (default) or 5 for the raw planes (``obs="grid"``).
 * ``resN``  - stem conv + N residual blocks (2N + 1 conv layers); receptive field 4N + 3
-              (res2: 11, res4: 19, res8: 35 >= map width 32, i.e. whole-map view).
+              (res2: 11, res4: 19, res8: 35).  The read-out is at Pacman's cell, so the radius is what
+              counts: res8 sees 17 cells in each direction and therefore does NOT see the whole
+              32-wide map from every position (tests/test_learning.py quantifies this).
 
 The conv nets are fully convolutional and read the Q-values out at Pacman's cell (dueling
 optional); the MLP ends in a dueling head.  The conv trunks carry

@@ -4,8 +4,9 @@ and GamePanel.java), exposing a Gymnasium-style reset/step API.
 Actions: 0 = stay, 1 = right, 2 = down, 3 = left, 4 = up (action a>0 moves along
 ``DIRS[a-1]``).  Moving into a wall leaves Pacman in place, as in Java.
 
-Turn order (matches GamePanel.actionPerformed): Pacman moves -> eats gold ->
-collision check -> ghosts move -> collision check -> win check.  A collision is
+Turn order (follows GamePanel.actionPerformed, with two deliberate differences, see
+docs/PLAN.md section 4): Pacman moves -> eats gold -> collision check -> win check (all gold eaten
+= immediate win, ghosts do not move again) -> ghosts move -> collision check.  A collision is
 two entities on the same cell; because it is checked after *each* move, Pacman
 and a ghost can never pass through each other.
 """

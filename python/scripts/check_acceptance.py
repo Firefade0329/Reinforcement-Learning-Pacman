@@ -115,8 +115,8 @@ def main(run_tests: bool):
         _, lo_s, _, txt = fmt_paired("deep vs safe-heuristic", deep["standard"], safe)
         bound = -0.03 * safe.mean()
         add("S1", "SHOULD", "PASS" if rel >= -0.03 else "FAIL",
-            f"{txt}; relative {rel * 100:+.1f}% (pre-set point-estimate target >= -3%); "
-            f"non-inferiority NOT the same thing: CI lower bound {lo_s:+.1f} vs -3% bound {bound:+.1f} -> shown: {lo_s >= bound}")
+            f"{txt}; relative {rel * 100:+.1f}% (pre-set point-estimate target >= -3%; this is not a non-inferiority test: "
+            f"CI lower bound {lo_s:+.1f} vs the -3% bound {bound:+.1f}, non-inferiority shown: {lo_s >= bound})")
     else:
         add("S1", "SHOULD", "MISSING", "needs deep + safe-heuristic")
 

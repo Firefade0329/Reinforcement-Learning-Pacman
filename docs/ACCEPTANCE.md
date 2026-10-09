@@ -14,16 +14,16 @@ pip install -r python/requirements.txt          # numpy, torch (CPU 即可), mat
 | 步骤 | 命令 | 期望 |
 |---|---|---|
 | 1. 单元/集成测试 (M1) | `python -m pytest python/tests -q` | 全绿 |
-| 2. 快速冒烟 (M2) | `bash python/scripts/acceptance.sh --quick` | 约 5–10 分钟,以 `QUICK ACCEPTANCE PASSED` 结束;其中同一 checkpoint 评估两次的 JSON 必须逐字节相同 |
+| 2. 快速冒烟 (M2) | `bash python/scripts/acceptance.sh --quick` | 约 1–10 分钟(取决于机器),以 `QUICK ACCEPTANCE PASSED` 结束;其中同一 checkpoint 评估两次的 JSON 必须逐字节相同,否则脚本以非零退出码失败 |
 | 3. 对已提交的完整结果判定 | `bash python/scripts/acceptance.sh` | 逐条输出 `PASS / FAIL / REPORTED / MISSING`,有 MUST 不满足则退出码 1 |
-| 4. 重新生成报告 | `python python/scripts/make_report.py` | 重写 `docs/RESULTS.md` 与 `results/figures/*.png`;`git diff` 应无变化 |
+| 4. 重新生成报告 | `python python/scripts/make_report.py` | 重写 `docs/RESULTS.md` 与 `results/figures/*.png`;文本部分应无变化(M1 行已不含测试耗时;测试计数会随环境变化,例如无 GPU 的机器跳过 1 项)。PNG 图的字节随 matplotlib 版本变化,**不要求逐字节一致** |
 | 5. (可选)完整复现 | `bash python/scripts/run_all.sh` | 数小时 CPU;可断点续跑 |
 | 6. (可选)重跑 Java 真值 | `bash python/scripts/run_java_legacy.sh 150` | 需要 JDK;在临时目录运行,不改动仓库 |
 
 测试覆盖的重点:
 - Python 地图与三份 `Game.java` 中的地图**逐格相同**;378 格、377 个可吃金豆。
 - 幽灵永不入墙、不掉头;追击概率与 Java 规则一致(统计检验);碰撞、通关、截断、同种子确定性。
-- `legacy` 复刻与**真实运行原版 Java 代码**得到的分布统计上不可区分(得分/步数/死亡率 z 检验 + KS 检验)。
+- `legacy` 复刻与**真实运行原版 Java 代码**得到的分布**未检出显著差异**(得分/步数/死亡率 z 检验 + KS 检验;种子为专用的 20000–20299)。这只是分布层面的检验,不证明逐步转移相同(终局时序等差异见 `docs/PLAN.md` 第 4 节)。
 - n 步回报、终止/截断处理、ResNet 初始为恒等、感受野、特征有限且有界、checkpoint 往返一致。
 
 ## C. 人工复核清单

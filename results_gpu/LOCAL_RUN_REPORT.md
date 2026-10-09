@@ -3,6 +3,8 @@
 > 本文件由本地 Claude Code 如实撰写。表中成绩来自 `RESULTS.md`(由 `make_report.py` 生成)和各运行目录里的 JSON。
 > 日志里的本机路径和用户名已替换为占位符 `<repo>` / `<local>` / `<home>`,除此之外未改动。
 
+> **补注(云端,2026-10-09):本文是提交 `cb224cc` 时的过程记录,原文保留以反映当时的真实情况。** 其中 M1 FAIL、续训存档在 Windows 上崩溃、残留锁需手动删除、`make_report.py` 的中文编码问题,已在 `main` 修复并经 Windows 复测(见 `docs/PLAN.md` 偏差记录);第 6 节的 M1 在 Linux 上是 PASS。另有两处原文不够严谨:(1) 第 4 节"续训后与不中断的结果统计上等价"**没有被检验**——续训时环境状态和 n 步待处理队列没有存档,轨迹与不中断训练不同,对分布的影响未量化;这些运行的 `train_log.jsonl` 有重复或倒退的行(权重与 summary 不受影响)。(2) 本套的评估在 GPU 上进行,同一 checkpoint 换到 CPU 评估,逐局结果会不同(见 `docs/RESULTS_COMPARISON.md`)。
+
 ## 1. 机器信息
 
 | 项 | 值 |

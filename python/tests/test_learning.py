@@ -66,7 +66,7 @@ def test_resnet_blocks_start_as_identity():
     assert torch.allclose(h, stem, atol=1e-6)  # zero-init second conv => identity blocks
 
 
-def test_receptive_field_covers_map_only_for_res8():
+def test_receptive_field_side_lengths():
     assert receptive_field("cnn2") == 5 and receptive_field("res2") == 11
     assert receptive_field("res4") == 19 and receptive_field("res8") == 35
     assert receptive_field("res8") >= maps.W > receptive_field("res4")
@@ -336,3 +336,17 @@ def test_m2_check_and_timing_strip():
     lib = _load_script("acceptance_lib")
     assert lib.strip_timing("46 passed, 1 skipped in 20.31s") == "46 passed, 1 skipped"
     assert lib.strip_timing("45 passed, 1 skipped in 95.89s (0:01:35)") == "45 passed, 1 skipped"
+
+
+def test_res8_readout_does_not_see_the_whole_map_everywhere():
+    """Side 35 >= width 32 does NOT mean whole-map view: Q is read at Pacman's cell, so the radius (17) counts."""
+    layers = 2 * 8 + 1  # = receptive-field radius in cells (each 3x3 conv adds 1)
+    cx, cy = maps.CELL_X.astype(int), maps.CELL_Y.astype(int)
+    dist = np.maximum(np.abs(cx[:, None] - cx[None, :]), np.abs(cy[:, None] - cy[None, :]))  # Chebyshev
+    inside = dist <= layers
+    assert not inside.all()
+    a, b = int(maps.CELL_ID[1, 1]), int(maps.CELL_ID[1, 30])  # both open; 29 columns apart
+    assert dist[a, b] == 29 > layers
+    assert 0.75 < inside.mean() < 0.85               # ~80 % of (Pacman cell, other cell) pairs
+    assert 0.10 < inside.all(axis=1).mean() < 0.20   # ~14 % of Pacman positions see every open cell
+    assert (dist <= 2 * 4 + 1).mean() < 0.45         # res4: ~37 % of pairs

@@ -84,9 +84,12 @@ unchanged.
   dies in ~96 % of games. The 300+ scores in `data/Score.txt` come from other training states and do not
   represent that configuration.
 * Headline (300 test games, standard ghosts): the best learned agent (an MLP on engineered features) clearly
-  beats the Java agent, and with 300k training steps (local GPU run) is statistically on par with a careful
-  hand-written planner; with 120k steps (cloud CPU run) it was still ~12 % below it. Deeper conv nets did *not*
-  help at either budget; the one robust algorithmic finding is that n-step = 1 helps the ResNet-4 a lot.
+  beats the Java agent. With 300k training steps (local GPU run) its mean is ~2 % below a careful hand-written
+  planner and not significantly different from it, but equivalence or non-inferiority is *not* established (the
+  confidence interval ignores training-seed variance); with 120k steps (cloud CPU run) it was ~12 % below.
+  Deeper conv nets did *not* help at either budget under the default recipe; the one algorithmic finding that
+  reproduced in a second run is that n-step = 1 helps the ResNet-4 a lot (it is the only depth tested with
+  n-step = 1, so the depth effect under a corrected recipe is still open).
   See `docs/RESULTS.md` (cloud, 120k steps), `results_gpu/RESULTS.md` (local, 300k steps) and
   `docs/RESULTS_COMPARISON.md` (side by side, auto-generated) for numbers, ablations and caveats.
 
