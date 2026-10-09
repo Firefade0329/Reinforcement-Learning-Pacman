@@ -279,7 +279,7 @@ def main():
 {limitations(acc.stdout)}
 """
     OUT.write_text(md, encoding="utf-8")
-    print(f"wrote {OUT}")
+    print(f"wrote {OUT.relative_to(L.ROOT) if OUT.is_relative_to(L.ROOT) else OUT.name}")
 
 
 if __name__ == "__main__":

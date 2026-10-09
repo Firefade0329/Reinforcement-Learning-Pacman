@@ -27,10 +27,18 @@ class TabularAgent(Agent):
         return int(np.argmax(self.q[tabular_state(env)]))
 
 
+def q_update(q: np.ndarray, s: int, a: int, r: float, s2: int, terminated: bool, alpha: float, gamma: float) -> None:
+    """One TD(0) update.  ``s2`` must be the REAL next state: a time-limit truncation is not terminal and
+    still bootstraps from it (the earlier code bootstrapped from the previous state on truncation)."""
+    target = r if terminated else r + gamma * q[s2].max()
+    q[s, a] += alpha * (target - q[s, a])
+
+
 def train_tabular(episodes: int = 3000, seed: int = 0, cfg: EnvConfig = STANDARD, alpha: float = 0.1,
-                  gamma: float = 0.9, eps_start: float = 1.0, eps_end: float = 0.05, log=None):
+                  gamma: float = 0.9, eps_start: float = 1.0, eps_end: float = 0.05, log=None,
+                  q0: np.ndarray | None = None):
     rng = np.random.default_rng(seed)
-    q = np.zeros((NUM_TABULAR_STATES, NUM_ACTIONS))
+    q = np.zeros((NUM_TABULAR_STATES, NUM_ACTIONS)) if q0 is None else np.array(q0, dtype=float)
     env = PacmanEnv(cfg)
     curve = []
     for ep in range(episodes):
@@ -41,9 +49,8 @@ def train_tabular(episodes: int = 3000, seed: int = 0, cfg: EnvConfig = STANDARD
             a = int(rng.integers(NUM_ACTIONS)) if rng.random() < eps else int(np.argmax(q[s]))
             _, r, term, trunc, info = env.step(a)
             done = term or trunc
-            s2 = tabular_state(env) if not done else s
-            target = r if term else r + gamma * q[s2].max()  # truncation still bootstraps
-            q[s, a] += alpha * (target - q[s, a])
+            s2 = tabular_state(env)
+            q_update(q, s, a, r, s2, term, alpha, gamma)
             s, ret = s2, ret + r
         curve.append((ep, ret, info["score"]))
         if log and (ep + 1) % 500 == 0:

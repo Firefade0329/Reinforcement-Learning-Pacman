@@ -83,3 +83,14 @@ PACMAN_TRAIN_EXTRA="--n_step 1" PACMAN_SKIP_ALGO=1 PACMAN_RESULTS_DIR="$PWD/resu
 `PACMAN_TRAIN_EXTRA` is appended to every training command, `PACMAN_SKIP_ALGO=1` skips the ablation stage.
 Training is resumable: re-run the same command after an interruption.  Generate the report with
 `PACMAN_RESULTS_DIR=... python scripts/make_report.py` and compare with `python scripts/make_comparison.py <dir_a> <dir_b>`.
+
+## Resuming an interrupted run
+
+Training writes `resume.pt` / `resume_replay.npz` at every evaluation boundary and picks them up when the
+same command is run again.  A resumed run is **successful but not bit-equivalent** to an uninterrupted one:
+environment states and the pending n-step queues are not saved (at most 2 transitions per environment are
+lost) and new episodes use unused seeds, so the effect on the training distribution is not quantified.
+On resume the log is truncated to the checkpoint and a `{"type": "resume", ...}` row marks the point; logs of
+runs resumed with the older code (cloud `res4_s0`, local `mlp_s0/s1/s2`) can contain duplicated or
+backward-going rows (weights and `summary.json` are unaffected).  Evaluation also depends on the device: the
+same checkpoint evaluated on GPU and on CPU gives different per-episode results.

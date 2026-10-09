@@ -350,3 +350,63 @@ def test_res8_readout_does_not_see_the_whole_map_everywhere():
     assert 0.75 < inside.mean() < 0.85               # ~80 % of (Pacman cell, other cell) pairs
     assert 0.10 < inside.all(axis=1).mean() < 0.20   # ~14 % of Pacman positions see every open cell
     assert (dist <= 2 * 4 + 1).mean() < 0.45         # res4: ~37 % of pairs
+
+
+def test_tabular_truncation_bootstraps_from_the_real_next_state(monkeypatch):
+    """A time-limit truncation is not terminal: the target must use the REAL next state's Q, not the old one."""
+    import pacman_rl.tabular as T
+    from pacman_rl.env import EnvConfig
+
+    calls = {"n": 0}
+
+    def fake_state(env):  # state 0 after reset, state 1 after the (truncated) step
+        calls["n"] += 1
+        return 0 if calls["n"] == 1 else 1
+
+    monkeypatch.setattr(T, "tabular_state", fake_state)
+    q0 = np.zeros((T.NUM_TABULAR_STATES, T.NUM_ACTIONS))
+    q0[1, :] = 10.0
+    cfg = EnvConfig(num_ghosts=0, max_steps=1, r_step=0.0, r_gold=0.0)
+    q, _ = T.train_tabular(episodes=1, seed=0, cfg=cfg, alpha=1.0, gamma=0.9, q0=q0)
+    assert q[0].max() == pytest.approx(9.0)  # 0 + 0.9 * max Q[1]; the old code gave 0.0 (it used Q[0])
+    # a true terminal does not bootstrap
+    q2 = q0.copy()
+    T.q_update(q2, 0, 0, 1.0, 1, True, 1.0, 0.9)
+    assert q2[0, 0] == pytest.approx(1.0)
+
+
+def test_resume_truncates_the_interrupted_segment_and_marks_it(tmp_path):
+    import json
+
+    from pacman_rl.dqn import TrainConfig, train, truncate_log_to
+
+    # unit: rows after the checkpoint are dropped, earlier ones (incl. exactly at it) are kept
+    p = tmp_path / "unit.jsonl"
+    rows = [{"type": "eval", "env_steps": 20000}, {"type": "train", "env_steps": 20000},
+            {"type": "train", "env_steps": 24000}, {"type": "train", "env_steps": 28000}]
+    p.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    assert truncate_log_to(p, 20000) == 2
+    assert [json.loads(x)["env_steps"] for x in p.read_text().splitlines()] == [20000, 20000]
+    assert truncate_log_to(tmp_path / "missing.jsonl", 5) == 0
+    # integration: a stray row written after the last checkpoint must not survive the resume
+    cfg = TrainConfig(arch="cnn2", total_env_steps=640, learn_start=64, eval_every=160, n_envs=4, buffer=2000,
+                      batch=8, seed=2)
+    run = tmp_path / "run"
+    train(cfg, run, log=lambda *_: None, _stop_after=320)
+    with open(run / "train_log.jsonl", "a") as f:
+        f.write(json.dumps({"type": "train", "env_steps": 400, "score": 1.0}) + "\n")  # from the interrupted segment
+    train(cfg, run, log=lambda *_: None)
+    rows = [json.loads(x) for x in (run / "train_log.jsonl").read_text().splitlines()]
+    assert not any(r["type"] == "train" and r["env_steps"] == 400 for r in rows)
+    marks = [r for r in rows if r["type"] == "resume"]
+    assert len(marks) == 1 and marks[0]["env_steps"] == 320 and marks[0]["dropped_rows"] == 1
+    steps = [r["env_steps"] for r in rows if r["type"] in ("eval", "train")]
+    assert steps == sorted(steps)  # the log no longer goes backwards
+
+
+def test_log_paths_are_not_absolute(capsys, tmp_path):
+    from pacman_rl import cli
+
+    shown = cli.rel(cli.RESULTS / "runs" / "x")
+    assert shown == "results/runs/x" and not shown.startswith("/")
+    assert cli.rel(tmp_path / "somewhere" / "run1") == "run1"  # outside the repo: just the name

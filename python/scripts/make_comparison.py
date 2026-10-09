@@ -128,7 +128,7 @@ def main():
     if "-o" in sys.argv:
         out = Path(sys.argv[sys.argv.index("-o") + 1])
     out.write_text(build(a, b, "12 万步 · CPU(云端)", "30 万步 · GPU(本地)"), encoding="utf-8")
-    print(f"wrote {out}")
+    print(f"wrote {out.relative_to(ROOT) if out.is_relative_to(ROOT) else out.name}")
 
 
 if __name__ == "__main__":

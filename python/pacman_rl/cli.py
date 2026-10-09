@@ -14,6 +14,15 @@ RESULTS = Path(os.environ.get("PACMAN_RESULTS_DIR") or Path(__file__).resolve().
 SPLITS = {"val": VAL_SEEDS, "test": TEST_SEEDS}
 
 
+def rel(path) -> str:
+    """Path for log output: relative to the repository (or just the name), never an absolute machine path."""
+    p = Path(path)
+    try:
+        return str(p.resolve().relative_to(RESULTS.resolve().parent)).replace("\\", "/")
+    except ValueError:
+        return p.name
+
+
 def fmt(s: dict) -> str:
     return (f"score {s['score_mean']:.1f} [{s['score_ci'][0]:.1f}, {s['score_ci'][1]:.1f}]  "
             f"death {s['death_rate']:.2f}  win {s['win_rate']:.2f}  steps {s['steps_mean']:.0f}")
@@ -49,7 +58,7 @@ def cmd_train(a):
     cfg = TrainConfig(**kw)
     name = a.name or f"{cfg.arch}_s{cfg.seed}"
     out = RESULTS / "runs" / name
-    print(f"training {name} -> {out}\n{cfg}", flush=True)
+    print(f"training {name} -> {rel(out)}\n{cfg}", flush=True)
     print(json.dumps(train(cfg, out, log=lambda m: print(m, flush=True), resume=not a.no_resume)))
 
 
@@ -125,7 +134,7 @@ def cmd_replay(a):
         agent.reset()
         act, label = agent.act, a.agent
     out = Path(a.out) if a.out else RESULTS / "replays" / f"{label}__{a.scenario}__seed{a.seed}.gif"
-    print(label, a.scenario, "-> score/steps/died/won", record(act, cfg, a.seed, out, label), out)
+    print(label, a.scenario, "-> score/steps/died/won", record(act, cfg, a.seed, out, label), rel(out))
 
 
 def main():

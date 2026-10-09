@@ -108,6 +108,26 @@ def load_checkpoint(path: Path, device: str = "cpu"):
     return model.to(resolve_device(device)), cfg, ck
 
 
+def truncate_log_to(path: Path, upto_env_steps: int) -> int:
+    """Drop every row after ``upto_env_steps`` from a training log and return how many were dropped.
+    Used on resume: rows written after the last checkpoint belong to the interrupted segment, which is
+    regenerated, so keeping them would duplicate rows and make the log go backwards."""
+    if not path.exists():
+        return 0
+    kept, dropped = [], 0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        if json.loads(line).get("env_steps", 0) <= upto_env_steps:
+            kept.append(line)
+        else:
+            dropped += 1
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text("".join(x + "\n" for x in kept), encoding="utf-8")
+    os.replace(tmp, path)
+    return dropped
+
+
 def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop_after: int | None = None) -> dict:
     """Train ``cfg``.  Every eval boundary writes resume.pt + resume_replay.npz in ``out_dir``; calling
     train() again on the same directory continues from there (episodes restart, RNG streams continue),
@@ -162,10 +182,15 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
                 episode_k += 1
                 obs[i] = observe(e)
             resumed = True
+            dropped_rows = truncate_log_to(out_dir / "train_log.jsonl", env_steps)
             log(f"[resume] continuing from env_steps={env_steps} updates={updates}")
         else:
             log("[resume] saved state does not match this config; starting from scratch")
     train_log = open(out_dir / "train_log.jsonl", "a" if resumed else "w")
+    if resumed:  # explicit marker so a reader of the log can see where the run was interrupted
+        train_log.write(json.dumps({"type": "resume", "env_steps": env_steps, "updates": updates,
+                                    "dropped_rows": dropped_rows}) + "\n")
+        train_log.flush()
     recent_scores, recent_rets, recent_deaths, losses = [], [], [], []
     t0 = time.time() - minutes0 * 60
 
