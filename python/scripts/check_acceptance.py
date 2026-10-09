@@ -28,9 +28,14 @@ def fmt_paired(label, a, b):
     return d, lo, hi, f"{label}: diff {d:+.1f} [95% CI {lo:+.1f}, {hi:+.1f}]"
 
 
+M2_SEEDS = 50           # validation seeds evaluated twice per checkpoint
+M2_ARCHS = ("mlp", "res4")  # one engineered-feature network and one convolutional network
+
+
 def check_m2():
-    """Reproducibility on THIS machine: one committed MLP checkpoint evaluated twice must give identical
-    per-episode results.  (The full smoke run is `bash python/scripts/acceptance.sh --quick`.)"""
+    """Reproducibility on THIS machine: a committed MLP checkpoint and a committed convolutional checkpoint,
+    each evaluated twice on the first 50 validation seeds (CPU), must give identical per-episode results.
+    (The full smoke run is `bash python/scripts/acceptance.sh --quick`.)"""
     try:
         sys.path.insert(0, str(L.ROOT / "python"))
         from pacman_rl.dqn import evaluate_model, load_checkpoint
@@ -38,15 +43,20 @@ def check_m2():
         from pacman_rl.evaluate import VAL_SEEDS
     except Exception as e:  # noqa: BLE001
         return "MISSING", f"cannot import torch / pacman_rl ({type(e).__name__}); run acceptance.sh --quick instead"
-    ckpts = [L.RUNS / n / "best.pt" for n in L.run_names("mlp") if (L.RUNS / n / "best.pt").exists()]
-    if not ckpts:
-        return "MISSING", "no committed MLP checkpoint found"
-    model, cfg, _ = load_checkpoint(ckpts[0], "cpu")
-    a = evaluate_model(model, cfg, STANDARD, VAL_SEEDS[:10])
-    b = evaluate_model(model, cfg, STANDARD, VAL_SEEDS[:10])
-    ok = a == b
-    return ("PASS" if ok else "FAIL"), (f"{ckpts[0].parent.name}/best.pt evaluated twice on 10 validation seeds (cpu): "
-                                       f"{'identical' if ok else 'DIFFERENT'}")
+    found = {}
+    for arch in M2_ARCHS:
+        ck = [L.RUNS / n / "best.pt" for n in L.run_names(arch) if (L.RUNS / n / "best.pt").exists()]
+        if ck:
+            found[arch] = ck[0]
+    if len(found) < len(M2_ARCHS):
+        return "MISSING", f"needs a committed checkpoint for each of {list(M2_ARCHS)}; found {sorted(found)}"
+    parts, ok = [], True
+    for arch, path in found.items():
+        model, cfg, _ = load_checkpoint(path, "cpu")
+        same = evaluate_model(model, cfg, STANDARD, VAL_SEEDS[:M2_SEEDS]) == evaluate_model(model, cfg, STANDARD, VAL_SEEDS[:M2_SEEDS])
+        ok &= same
+        parts.append(f"{path.parent.name}/best.pt: {'identical' if same else 'DIFFERENT'}")
+    return ("PASS" if ok else "FAIL"), f"each evaluated twice on {M2_SEEDS} validation seeds (cpu): " + "; ".join(parts)
 
 
 def main(run_tests: bool):

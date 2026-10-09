@@ -402,10 +402,36 @@ def test_matrix_validation_does_not_fill_in_missing_experiment_settings(tmp_path
     assert mine() == []
 
 
-def test_m2_check_and_timing_strip(monkeypatch):
+def test_m2_check_covers_mlp_and_a_convolutional_net_and_passes_on_the_committed_checkpoints(monkeypatch):
+    _need_committed_results()
     chk = _load_script("check_acceptance", monkeypatch)
     status, detail = chk.check_m2()
-    assert status == "PASS" and "identical" in detail, (status, detail)
+    assert status == "PASS", (status, detail)
+    assert "50 validation seeds" in detail and "mlp_s0/best.pt: identical" in detail and "res4_s0/best.pt: identical" in detail
+
+
+def test_m2_check_fails_when_the_evaluation_is_perturbed(monkeypatch):
+    """The checker itself needs a guarantee: if two evaluations of one checkpoint differ, M2 must be FAIL."""
+    _need_committed_results()
+    import pacman_rl.dqn as dqn
+
+    real, calls = dqn.evaluate_model, {"n": 0}
+
+    def flaky(*a, **k):
+        out = real(*a, **k)
+        calls["n"] += 1
+        if calls["n"] % 2 == 0:  # the second evaluation of every checkpoint is nudged by one point
+            out = [dict(r) for r in out]
+            out[0]["score"] += 1
+        return out
+
+    monkeypatch.setattr(dqn, "evaluate_model", flaky)
+    chk = _load_script("check_acceptance", monkeypatch)
+    status, detail = chk.check_m2()
+    assert status == "FAIL" and "DIFFERENT" in detail and "identical" not in detail, (status, detail)
+
+
+def test_timing_is_stripped_from_the_pytest_summary(monkeypatch):
     lib = _load_script("acceptance_lib", monkeypatch)
     assert lib.strip_timing("46 passed, 1 skipped in 20.31s") == "46 passed, 1 skipped"
     assert lib.strip_timing("45 passed, 1 skipped in 95.89s (0:01:35)") == "45 passed, 1 skipped"
