@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as F
 
 from .env import FIELD_SHAPE, GHOST_FIELD_RANGE, GOLD_FIELD_RANGE, NUM_ACTIONS, OBS_SHAPE, STANDARD, PacmanEnv
-from .evaluate import VAL_SEEDS, evaluate_batched, summarize, train_seed
+from .evaluate import SELECTION_SETS, TRAIN_SEED_BASE, evaluate_batched, seed_set, summarize, train_seed
 from .features import FEATURE_DIM, feature_vector
 from .models import build_model
 from .replay import NStepReplay
@@ -45,6 +45,7 @@ class TrainConfig:
     seed: int = 0
     threads: int = 1
     device: str = "cpu"           # cpu | cuda | auto (cuda if available)
+    val_set: str = "val"          # named seed set used for checkpoint selection (evaluate.SELECTION_SETS); test sets are refused
 
 
 def observe_fn(arch: str, obs: str = "fields"):
@@ -152,10 +153,23 @@ def truncate_log_to(path: Path, upto_env_steps: int) -> tuple[int, int]:
     return len(rows) - len(kept), partial
 
 
+def checked_train_seed(cfg: "TrainConfig", k: int, resumed: bool = False) -> int:
+    """``train_seed`` plus the runtime check that this run's episode stream cannot leave its own block: a fresh run
+    starts n_envs episodes and every further episode needs at least one environment transition, so
+    k <= total_env_steps + n_envs (a resumed run restarts n_envs episodes per resume, so only the block bound applies)."""
+    if k >= TRAIN_SEED_BASE or (not resumed and k > cfg.total_env_steps + cfg.n_envs):
+        raise AssertionError(f"training episode index {k} is outside this run's seed block "
+                             f"(total_env_steps={cfg.total_env_steps}, n_envs={cfg.n_envs}, resumed={resumed})")
+    return train_seed(cfg.seed, k)
+
+
 def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop_after: int | None = None) -> dict:
     """Train ``cfg``.  Every eval boundary writes resume.pt + resume_replay.npz in ``out_dir``; calling
     train() again on the same directory continues from there (episodes restart, RNG streams continue),
     so a killed or suspended machine loses at most ``eval_every`` steps.  ``_stop_after`` is for tests."""
+    if cfg.val_set not in SELECTION_SETS:
+        raise ValueError(f"val_set={cfg.val_set!r}: a training run may only select checkpoints on {list(SELECTION_SETS)}")
+    val_seeds = seed_set(cfg.val_set)  # resolved here, at run time, from the config (not bound at import)
     torch.set_num_threads(cfg.threads)
     torch.manual_seed(cfg.seed)  # also seeds CUDA; GPU runs are statistically, not bitwise, reproducible
     device = resolve_device(cfg.device)
@@ -176,7 +190,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
     ep_ret = np.zeros(cfg.n_envs)
     obs = []
     for e in envs:
-        e.reset(train_seed(cfg.seed, episode_k))
+        e.reset(checked_train_seed(cfg, episode_k))
         episode_k += 1
         obs.append(observe(e))
 
@@ -202,7 +216,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
                     getattr(replay, name)[:n] = data[name]
             replay.pos, replay.size = int(ck["replay_pos"]), n
             for i, e in enumerate(envs):  # fresh episodes with unused seeds
-                e.reset(train_seed(cfg.seed, episode_k))
+                e.reset(checked_train_seed(cfg, episode_k, resumed=True))
                 episode_k += 1
                 obs[i] = observe(e)
             resumed = True
@@ -232,7 +246,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
 
     def do_eval(tag: str):
         nonlocal best_val, best_step
-        recs = evaluate_model(online, cfg, STANDARD, VAL_SEEDS)
+        recs = evaluate_model(online, cfg, STANDARD, val_seeds)
         s = summarize(recs)
         online.train()
         row = {"type": "eval", "env_steps": env_steps, "updates": updates, "val_score": s["score_mean"],
@@ -265,7 +279,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
                 recent_rets.append(ep_ret[i])
                 recent_deaths.append(float(info["died"]))
                 ep_ret[i] = 0.0
-                e.reset(train_seed(cfg.seed, episode_k))
+                e.reset(checked_train_seed(cfg, episode_k, resumed))
                 episode_k += 1
                 nxt = observe(e)
             obs[i] = nxt

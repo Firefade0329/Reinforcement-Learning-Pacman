@@ -8,11 +8,18 @@ from dataclasses import fields
 from pathlib import Path
 
 from .baselines import make_agent
-from .evaluate import SCENARIOS, TEST_SEEDS, VAL_SEEDS, evaluate_named, save_eval, summarize
+from .evaluate import SCENARIOS, SEALED_SETS, SEED_SETS, SealedSetError, evaluate_named, save_eval, seed_set, summarize
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RESULTS = Path(os.environ.get("PACMAN_RESULTS_DIR") or REPO_ROOT / "results")
-SPLITS = {"val": VAL_SEEDS, "test": TEST_SEEDS}
+SPLITS = tuple(SEED_SETS)  # names; resolved to seeds at call time by seed_set()
+
+
+def split_seeds(name: str) -> list[int]:
+    """Seeds of a split name.  Sealed partitions are refused here: they have their own final-evaluation path."""
+    if name in SEALED_SETS:
+        raise SealedSetError(f"split {name!r} is sealed; use `prereg.py final-eval` with a verified manifest")
+    return seed_set(name)
 
 
 def rel(path) -> str:
@@ -30,7 +37,7 @@ def fmt(s: dict) -> str:
 
 
 def cmd_baseline(a):
-    recs = evaluate_named(a.agent, SCENARIOS[a.scenario], SPLITS[a.split], workers=a.workers)
+    recs = evaluate_named(a.agent, SCENARIOS[a.scenario], split_seeds(a.split), workers=a.workers)
     out = Path(a.out) if a.out else RESULTS / "eval" / f"{a.agent}__{a.scenario}__{a.split}.json"
     p = save_eval(out, a.agent, a.scenario, a.split, recs)
     print(f"{a.agent:15s} {a.scenario}/{a.split}: {fmt(p['summary'])}")
@@ -47,7 +54,7 @@ def cmd_tabular(a):
     for split in ("val", "test") if a.test else ("val",):
         for scen in ("standard", "hard") if split == "test" else ("standard",):
             from .evaluate import play_episode
-            recs = [play_episode(agent, SCENARIOS[scen], s) for s in SPLITS[split]]
+            recs = [play_episode(agent, SCENARIOS[scen], s) for s in split_seeds(split)]
             p = save_eval(run / f"{split}_{scen}.json", f"tabular-q_s{a.seed}", scen, split, recs)
             print(f"tabular-q s{a.seed} {scen}/{split}: {fmt(p['summary'])}")
 
@@ -69,7 +76,7 @@ def cmd_eval_model(a):
     model, cfg, _ = load_checkpoint(Path(a.ckpt), a.device)
     ck_dir = Path(a.ckpt).parent
     for scen in a.scenarios:
-        recs = evaluate_model(model, cfg, SCENARIOS[scen], SPLITS[a.split])
+        recs = evaluate_model(model, cfg, SCENARIOS[scen], split_seeds(a.split))
         p = save_eval(ck_dir / f"{a.split}_{scen}.json", ck_dir.name, scen, a.split, recs)
         print(f"{ck_dir.name} {scen}/{a.split}: {fmt(p['summary'])}", flush=True)
 
@@ -161,6 +168,7 @@ def main():
     p.add_argument("--arch", choices=["mlp", "cnn2", "res2", "res4", "res8"])
     p.add_argument("--obs", choices=["fields", "grid"])
     p.add_argument("--device", choices=["cpu", "cuda", "auto"])
+    p.add_argument("--val_set", choices=["val", "prereg_val", "smoke_eval"], help="seed set for checkpoint selection")
     for k, t in [("width", int), ("n_step", int), ("batch", int), ("buffer", int), ("learn_start", int),
                  ("n_envs", int), ("steps_per_update", int), ("total_env_steps", int), ("eval_every", int),
                  ("seed", int), ("threads", int), ("lr", float), ("gamma", float), ("tau", float),

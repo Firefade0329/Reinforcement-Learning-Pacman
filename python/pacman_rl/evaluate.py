@@ -14,8 +14,37 @@ from .env import HARD, STANDARD, EnvConfig, PacmanEnv
 VAL_SEEDS = list(range(5000, 5050))  # model selection only
 TEST_SEEDS = list(range(10000, 10300))  # final numbers only
 EQUIV_SEEDS = list(range(20000, 20300))  # fidelity checks of NON-learning agents (never used for selection or final numbers)
+# Preregistered architecture x n-step study (docs/prereg/): its own selection / sealed final / smoke partitions.
+PREREG_VAL_SEEDS = list(range(21000, 21050))  # model selection of the preregistered runs
+PREREG_TEST_SEEDS = list(range(30000, 30300))  # SEALED: read only by the final evaluation after all runs are complete
+SMOKE_EVAL_SEEDS = list(range(40000, 40010))  # throughput / correctness smoke runs only
 SCENARIOS = {"standard": STANDARD, "hard": HARD}
 TRAIN_SEED_BASE = 1_000_000  # training episode seeds: base * (run_seed + 1) + k  (disjoint from val/test)
+
+SEED_SETS: dict[str, list[int]] = {
+    "val": VAL_SEEDS, "test": TEST_SEEDS, "equiv": EQUIV_SEEDS,
+    "prereg_val": PREREG_VAL_SEEDS, "prereg_test": PREREG_TEST_SEEDS, "smoke_eval": SMOKE_EVAL_SEEDS,
+}
+SEALED_SETS = frozenset({"prereg_test"})  # cannot be resolved without an unseal token (see pacman_rl/seal.py)
+SELECTION_SETS = ("val", "prereg_val", "smoke_eval")  # the only sets a training run may use for checkpoint selection
+
+
+class SealedSetError(RuntimeError):
+    pass
+
+
+def seed_set(name: str, unseal=None) -> list[int]:
+    """Seed list of a named partition, resolved at call time (never bound at import).  Sealed partitions
+    need ``unseal`` = the token returned by ``seal.verify_manifest`` (all runs complete, hashes verified)."""
+    if name not in SEED_SETS:
+        raise KeyError(f"unknown seed set {name!r}; known: {sorted(SEED_SETS)}")
+    if name in SEALED_SETS:
+        from .seal import UnsealToken
+
+        if not isinstance(unseal, UnsealToken):
+            raise SealedSetError(f"seed set {name!r} is sealed: it can only be read by the final evaluation with a verified "
+                                 f"integrity manifest (prereg.py final-eval --manifest ... --unseal)")
+    return list(SEED_SETS[name])
 
 
 def train_seed(run_seed: int, k: int) -> int:
@@ -23,7 +52,7 @@ def train_seed(run_seed: int, k: int) -> int:
 
 
 def splits() -> dict[str, list[int]]:
-    return {"val": VAL_SEEDS, "test": TEST_SEEDS}
+    return {"val": VAL_SEEDS, "test": TEST_SEEDS}  # legacy two-split view; use seed_set() for the named partitions
 
 
 # --------------------------------------------------------------------------- running
