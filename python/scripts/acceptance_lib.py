@@ -21,7 +21,7 @@ JAVA_BASE_COMMIT = "1e9da5c"  # repository HEAD before any Python work started (
 
 
 def load(path: Path):
-    return json.loads(Path(path).read_text()) if Path(path).exists() else None
+    return json.loads(Path(path).read_text(encoding="utf-8")) if Path(path).exists() else None
 
 
 def baseline(agent: str, scenario: str = "standard", split: str = "test"):

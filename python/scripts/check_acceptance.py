@@ -8,6 +8,7 @@ FAIL or MISSING.  Thresholds are fixed by the plan and must not be edited to fit
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 
@@ -31,7 +32,7 @@ def main(run_tests: bool):
     # ---- M1 / M2 (tests) ---------------------------------------------------------------
     if run_tests:
         r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-x", str(L.ROOT / "python" / "tests")],
-                           cwd=L.ROOT / "python", env={"PYTHONPATH": str(L.ROOT / "python"), "PATH": "/usr/bin:/bin"},
+                           cwd=L.ROOT / "python", env={**os.environ, "PYTHONPATH": str(L.ROOT / "python")},
                            capture_output=True, text=True)
         add("M1", "MUST", "PASS" if r.returncode == 0 else "FAIL", r.stdout.strip().splitlines()[-1] if r.stdout else r.stderr[-200:])
     else:

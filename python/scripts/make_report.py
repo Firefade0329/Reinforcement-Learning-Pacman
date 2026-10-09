@@ -109,7 +109,7 @@ def ablation_deltas():
 def resumed_runs():
     out = []
     for p in sorted(L.RUNS.glob("*/stdout.log")):
-        txt = p.read_text(errors="ignore")
+        txt = p.read_text(encoding="utf-8", errors="ignore")
         if "[resume]" in txt:
             out.append(p.parent.name)
     return ", ".join(out) if out else "无"
@@ -127,7 +127,7 @@ def curves():
             p = L.RUNS / n / "train_log.jsonl"
             if not p.exists():
                 continue
-            rows = [json.loads(x) for x in p.read_text().splitlines()]
+            rows = [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines()]
             ev = [(r["env_steps"], r["val_score"]) for r in rows if r["type"] == "eval"]
             series.append(ev)
         if not series:
@@ -176,10 +176,11 @@ def curves():
 
 def main():
     acc = subprocess.run([sys.executable, str(Path(__file__).with_name("check_acceptance.py")), "--run-tests"],
-                         capture_output=True, text=True, cwd=L.ROOT / "python", env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(L.ROOT / "python")})
+                         capture_output=True, text=True, cwd=L.ROOT / "python", env={**os.environ, "PYTHONPATH": str(L.ROOT / "python")})
     try:
         curves()
-        figs = "![curves](../results/figures/learning_curves.png)\n\n![final](../results/figures/final_comparison.png)"
+        pre = "figures" if os.environ.get("PACMAN_RESULTS_DIR") else "../results/figures"  # relative to where OUT lives
+        figs = f"![curves]({pre}/learning_curves.png)\n\n![final]({pre}/final_comparison.png)"
     except ImportError:
         figs = "(matplotlib not installed - figures skipped)"
 
@@ -240,7 +241,7 @@ def main():
 - **过程中的工程事件**(详见 `docs/PLAN.md` 偏差记录):两个卷积运行曾被内存不足杀掉后重跑;`res8_s1`、`res8_s2` 使用旧的 float32 回放(与 uint8 回放等价到 1 ulp);虚拟机被挂起后部分运行从断点续训,续训时 episode 会重新开始。被续训过的运行:{resumed_runs()}。
 - **算力**:全部为 CPU、单进程 12 万步;GPU 上更长训练(见 `docs/LOCAL_GPU_RUN_PROMPT.md`)是补充实验,不在本报告内。
 """
-    OUT.write_text(md)
+    OUT.write_text(md, encoding="utf-8")
     print(f"wrote {OUT}")
 
 

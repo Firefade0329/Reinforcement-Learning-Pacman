@@ -282,3 +282,15 @@ def test_stale_lock_is_taken_over(tmp_path, monkeypatch):
     assert mod.take_lock(run) and not mod.take_lock(run)  # held by this (alive) process
     (run / ".lock" / "pid").write_text("999999999")      # owner that does not exist
     assert mod.take_lock(run)                              # stale -> taken over
+
+
+def test_pid_alive_is_portable():
+    import importlib.util
+    import os
+
+    spec = importlib.util.spec_from_file_location("run_experiments2", REPO / "python" / "scripts" / "run_experiments.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.pid_alive(os.getpid())
+    assert not mod.pid_alive(0) and not mod.pid_alive(-5)
+    assert not mod.pid_alive(999999999)  # no such process

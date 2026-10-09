@@ -40,6 +40,34 @@ def sh(args, log: Path | None = None):
     return subprocess.run(cmd, cwd=PY, env=env).returncode
 
 
+def pid_alive(pid: int) -> bool:
+    """Is process ``pid`` running?  Portable (POSIX signal 0 / Windows OpenProcess); when unsure,
+    answers True so a live run is never stolen."""
+    if pid <= 0:
+        return False
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            k32 = ctypes.windll.kernel32
+            handle = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+            if not handle:
+                return k32.GetLastError() == 5  # ERROR_ACCESS_DENIED: exists, just not ours
+            try:
+                code = ctypes.c_ulong()
+                return bool(k32.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259  # STILL_ACTIVE
+            finally:
+                k32.CloseHandle(handle)
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except Exception:  # noqa: BLE001 - be conservative on anything unexpected
+        return True
+
+
 def take_lock(run: Path) -> bool:
     """Atomic per-run lock holding the orchestrator's pid; a lock whose owner is gone (killed or
     suspended machine) is stale and is taken over, so interrupted runs resume automatically."""
@@ -47,12 +75,12 @@ def take_lock(run: Path) -> bool:
     for _ in range(2):
         try:
             lock.mkdir()
-            (lock / "pid").write_text(str(os.getpid()))
+            (lock / "pid").write_text(str(os.getpid()), encoding="utf-8")
             return True
         except FileExistsError:
             pid_file = lock / "pid"
-            pid = int(pid_file.read_text()) if pid_file.exists() and pid_file.read_text().strip().isdigit() else None
-            if pid is not None and (Path(f"/proc/{pid}").exists() or not Path("/proc").exists()):
+            pid = int(pid_file.read_text(encoding="utf-8")) if pid_file.exists() and pid_file.read_text(encoding="utf-8").strip().isdigit() else None
+            if pid is not None and pid_alive(pid):
                 return False  # owner alive (or cannot tell: be conservative)
             stale = run / f".lock.stale.{os.getpid()}"
             try:
