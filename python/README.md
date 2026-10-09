@@ -97,3 +97,21 @@ damaged line anywhere else stops the resume with an error naming the line).  Log
 runs resumed with the older code (cloud `res4_s0`, local `mlp_s0/s1/s2`) can contain duplicated or
 backward-going rows (weights and `summary.json` are unaffected).  Evaluation also depends on the device: the
 same checkpoint evaluated on GPU and on CPU gives different per-episode results.
+
+## Run records, evaluation outputs and the preregistered-study tooling
+
+* Every fresh training run now also writes `code_version.json` (git SHA, dirty flag, hash of the tracked `python/` tree),
+  `environment.json` (allow-list: Python / torch / numpy / CUDA / cuDNN versions, device type, GPU model, torch threads,
+  determinism switches -- never a CPU brand, host name, user name or path), an `{"type":"init"}` row in `train_log.jsonl` with
+  the canonical SHA-256 of the initial online and target weights, and in `summary.json` the stored replay size, the number of
+  episodes started, a non-finite-loss counter, `weights_finite` and the peak process / CUDA memory.  A budget that ends on an
+  evaluation boundary is validated once (300000 steps with `eval_every` 20000 gives 15 validations).
+* `python -m pacman_rl.cli eval-model --ckpt X --split S --out-dir D` writes `D/<label>/<scenario>.json` (label = `last` /
+  `best`), never replaces an existing output (`--force` to opt in), uses 1 torch thread (`--threads`), records the checkpoint
+  identity and adds a `truncated` field to each record.  Without `--out-dir` the command behaves exactly as before.
+* Named seed sets (`evaluate.seed_set`): `val`, `test`, `equiv` (legacy), `prereg_val`, `prereg_test` (sealed), `smoke_eval`;
+  `--val_set` chooses the training selection set.  See `docs/prereg/README.md` for the preregistered runner, the sealed final
+  evaluation and the GPU smoke runs (`scripts/prereg.py smoke`).
+* n-step checks: `tests/test_nstep_oracle.py` compares the real `collect_step` -> `NStepReplay` -> `td_target` pipeline with an
+  independent exact-arithmetic oracle and six planted bugs; `scripts/nstep_oracle_report.py` writes the evidence (reviewer
+  fields are left empty for an independent human).

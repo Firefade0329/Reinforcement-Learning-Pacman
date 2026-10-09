@@ -93,6 +93,7 @@ unchanged.
   See `docs/RESULTS.md` (cloud, 120k steps), `results_gpu/RESULTS.md` (local, 300k steps) and
   `docs/RESULTS_COMPARISON.md` (side by side, auto-generated) for numbers, ablations and caveats.
 * Roles, working rules and the phase log: [`docs/RESEARCH_LOG.md`](docs/RESEARCH_LOG.md).
+* Tooling for the preregistered architecture x n-step study (matrix, runner, sealed final evaluation, smoke runs): [`docs/prereg/README.md`](docs/prereg/README.md).
 
 ```
 cd python && pip install -r requirements.txt && python -m pytest tests -q

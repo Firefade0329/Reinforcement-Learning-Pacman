@@ -39,3 +39,13 @@ Smoke runs write to `results_prereg_smoke/` (never to the formal `results_prereg
 wall time, updates, stored replay samples, env-steps/s, peak process memory (Windows: working set and commit) and CUDA peaks,
 CPU evaluation time of last/best on the smoke seeds, equality of the n=1/n=3 initial hashes and an interrupt/resume check.
 Smoke scores are for plumbing only; nothing is selected or tuned from them.
+
+## Smoke runs on the formal machine (what to run and what to send back)
+
+1. `python python/scripts/prereg.py smoke --profile quick --device cuda`: 12 short runs (seeds 900/901, all six
+   configurations); checks the GPU path, save/load, last/best CPU evaluation, equality of the n=1/n=3 initial hashes and the
+   interrupt/resume path.
+2. `python python/scripts/prereg.py smoke --profile load --device cuda`: two res8 runs in parallel with the replay buffer
+   filled (110000 steps); read peak working set / commit and `cuda_max_*` in the report; repeat with the intended worker count.
+3. Send back `results_prereg_smoke/smoke_report.json` (it holds only allow-listed environment fields and no paths) and the
+   observed wall time.  Do not commit `results_prereg_smoke/` (it is git-ignored) and do not use smoke scores for any decision.

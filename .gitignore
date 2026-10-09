@@ -12,3 +12,8 @@ results_gpu*/runs/*/resume_replay.npz
 results_gpu*/runs/*/resume*.tmp*
 results_gpu*/runs/*/.lock/
 results_gpu*/runs/*/.lock.stale.*/
+results_prereg_smoke/
+results_prereg*/runs/*/resume.pt
+results_prereg*/runs/*/resume_replay.npz
+results_prereg*/runs/*/.lock/
+results_prereg*/runs/*/.lock.stale.*/
