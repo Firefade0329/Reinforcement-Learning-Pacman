@@ -102,7 +102,7 @@ def _tiny(**kw):
 def test_training_selection_reads_exactly_the_configured_set(tmp_path, monkeypatch, name):
     seen = []
     real = dqn.evaluate_batched
-    monkeypatch.setattr(dqn, "evaluate_batched", lambda policy, cfg, seeds, observe: (seen.append(list(seeds)), real(policy, cfg, seeds, observe))[1])
+    monkeypatch.setattr(dqn, "evaluate_batched", lambda policy, cfg, seeds, observe, *a, **k: (seen.append(list(seeds)), real(policy, cfg, seeds, observe, *a, **k))[1])
     train(_tiny(val_set=name), tmp_path, log=lambda *_: None)
     assert seen and all(s == ev.SEED_SETS[name] for s in seen)
     others = set().union(*(set(v) for k, v in ev.SEED_SETS.items() if k != name))
