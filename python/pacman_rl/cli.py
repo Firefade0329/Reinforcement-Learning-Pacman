@@ -10,7 +10,8 @@ from pathlib import Path
 from .baselines import make_agent
 from .evaluate import SCENARIOS, TEST_SEEDS, VAL_SEEDS, evaluate_named, save_eval, summarize
 
-RESULTS = Path(os.environ.get("PACMAN_RESULTS_DIR") or Path(__file__).resolve().parents[2] / "results")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+RESULTS = Path(os.environ.get("PACMAN_RESULTS_DIR") or REPO_ROOT / "results")
 SPLITS = {"val": VAL_SEEDS, "test": TEST_SEEDS}
 
 
@@ -18,9 +19,9 @@ def rel(path) -> str:
     """Path for log output: relative to the repository (or just the name), never an absolute machine path."""
     p = Path(path)
     try:
-        return str(p.resolve().relative_to(RESULTS.resolve().parent)).replace("\\", "/")
+        return str(p.resolve().relative_to(REPO_ROOT)).replace("\\", "/")
     except ValueError:
-        return p.name
+        return p.name  # outside the repository (e.g. a throw-away results dir): the name only
 
 
 def fmt(s: dict) -> str:

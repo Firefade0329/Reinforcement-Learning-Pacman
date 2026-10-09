@@ -296,20 +296,23 @@ def test_pid_alive_is_portable():
     assert not mod.pid_alive(999999999)  # no such process
 
 
-def _load_script(name):
+def _load_script(name, monkeypatch):
+    """Load a script as a module that reads the COMMITTED results/ even when the test run itself happens
+    under acceptance.sh --quick (which exports PACMAN_RESULTS_DIR=<throw-away dir>)."""
     import importlib.util
-
-    spec = importlib.util.spec_from_file_location(name, REPO / "python" / "scripts" / f"{name}.py")
-    mod = importlib.util.module_from_spec(spec)
     import sys
 
-    sys.path.insert(0, str(REPO / "python" / "scripts"))
+    monkeypatch.delenv("PACMAN_RESULTS_DIR", raising=False)
+    monkeypatch.delitem(sys.modules, "acceptance_lib", raising=False)  # it reads the env var at import time
+    monkeypatch.syspath_prepend(str(REPO / "python" / "scripts"))
+    spec = importlib.util.spec_from_file_location(name, REPO / "python" / "scripts" / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
 
 def test_matrix_validation_passes_on_committed_results_and_catches_damage(tmp_path, monkeypatch):
-    lib = _load_script("acceptance_lib")
+    lib = _load_script("acceptance_lib", monkeypatch)
     assert lib.validate_matrix() == []  # the committed cloud matrix is complete and consistent
     # a run whose config disagrees with its name, and a truncated evaluation, must be reported
     import json
@@ -329,11 +332,11 @@ def test_matrix_validation_passes_on_committed_results_and_catches_damage(tmp_pa
     assert any("mlp_s0/standard: 299 episodes" in x for x in problems)
 
 
-def test_m2_check_and_timing_strip():
-    chk = _load_script("check_acceptance")
+def test_m2_check_and_timing_strip(monkeypatch):
+    chk = _load_script("check_acceptance", monkeypatch)
     status, detail = chk.check_m2()
     assert status == "PASS" and "identical" in detail, (status, detail)
-    lib = _load_script("acceptance_lib")
+    lib = _load_script("acceptance_lib", monkeypatch)
     assert lib.strip_timing("46 passed, 1 skipped in 20.31s") == "46 passed, 1 skipped"
     assert lib.strip_timing("45 passed, 1 skipped in 95.89s (0:01:35)") == "45 passed, 1 skipped"
 
@@ -407,6 +410,6 @@ def test_resume_truncates_the_interrupted_segment_and_marks_it(tmp_path):
 def test_log_paths_are_not_absolute(capsys, tmp_path):
     from pacman_rl import cli
 
-    shown = cli.rel(cli.RESULTS / "runs" / "x")
+    shown = cli.rel(cli.REPO_ROOT / "results" / "runs" / "x")
     assert shown == "results/runs/x" and not shown.startswith("/")
     assert cli.rel(tmp_path / "somewhere" / "run1") == "run1"  # outside the repo: just the name
