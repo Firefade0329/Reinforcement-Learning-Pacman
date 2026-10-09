@@ -1,0 +1,59 @@
+{
+  "_comment": "Hand-computed n-step fixtures (gamma = 1/2).  Every expected number below was derived by hand from the definition G = sum_{i<h} gamma^i r_i + gamma^h Q_target(s_h, argmax_a Q_online(s_h, a)) (no bootstrap after a true terminal, bootstrap from the real final observation after a time-limit truncation), not produced by running any pipeline.  A step is [state, action, reward, next_state, status] with status '' | 'terminated' | 'truncated'; a sample is [state, action, return, disc, next_state, y_double, y_max_target].  The online argmax is action 0 at every bootstrap state, the target network values another action higher, so Double DQN and plain max-target differ.",
+  "reviewer": "",
+  "review_date": "",
+  "gamma": 0.5,
+  "cases": [
+    {
+      "name": "nonterminal_chain",
+      "doc_ref": "v0.3.1 section 6, rows 1-2: rewards 1,2,4; n=1 -> 4 (naive 11), n=3 -> 4.25 (naive 6.75)",
+      "envs": [[[[0,0,1,1,""],[1,0,2,2,""],[2,0,4,3,""]]]],
+      "q_online": {"1":[5,0,0,0,0],"2":[5,0,0,0,0],"3":[5,0,0,0,0]},
+      "q_target": {"1":[6,20,0,0,0],"2":[8,16,0,0,0],"3":[10,30,0,0,0]},
+      "expected": {
+        "1": {"counts": [1,2,3], "samples": [[0,0,1.0,0.5,1,4.0,11.0],[1,0,2.0,0.5,2,6.0,10.0],[2,0,4.0,0.5,3,9.0,19.0]]},
+        "3": {"counts": [0,0,1], "samples": [[0,0,3.0,0.125,3,4.25,6.75]]}
+      }
+    },
+    {
+      "name": "terminal_short_chain",
+      "doc_ref": "v0.3.1 section 6, row 3: rewards 1,2, second step really terminates; n=3 tail flushed, nothing bootstrapped",
+      "envs": [[[[0,0,1,1,""],[1,0,2,2,"terminated"]],[]]],
+      "q_online": {"1":[5,0,0,0,0],"2":[5,0,0,0,0]},
+      "q_target": {"1":[6,20,0,0,0],"2":[9,9,0,0,0]},
+      "expected": {
+        "1": {"counts": [1,2], "samples": [[0,0,1.0,0.5,1,4.0,11.0],[1,0,2.0,0.0,2,2.0,2.0]]},
+        "3": {"counts": [0,2], "samples": [[0,0,2.0,0.0,2,2.0,2.0],[1,0,2.0,0.0,2,2.0,2.0]]}
+      }
+    },
+    {
+      "name": "truncated_short_chain",
+      "doc_ref": "v0.3.1 section 6, row 4: same chain, second step only time-truncated; real final state 2 (value 8), the state reached by the reset (5, value 100) must never be used",
+      "envs": [[[[0,0,1,1,""],[1,0,2,2,"truncated"]],[[5,0,16,6,""]]]],
+      "q_online": {"1":[5,0,0,0,0],"2":[5,0,0,0,0],"6":[5,0,0,0,0]},
+      "q_target": {"1":[6,20,0,0,0],"2":[8,16,0,0,0],"5":[100,100,0,0,0],"6":[50,60,0,0,0]},
+      "expected": {
+        "1": {"counts": [1,2,3], "samples": [[0,0,1.0,0.5,1,4.0,11.0],[1,0,2.0,0.5,2,6.0,10.0],[5,0,16.0,0.5,6,41.0,46.0]]},
+        "3": {"counts": [0,2,2], "samples": [[0,0,2.0,0.25,2,4.0,6.0],[1,0,2.0,0.5,2,6.0,10.0]]}
+      }
+    },
+    {
+      "name": "two_envs_interleaved",
+      "doc_ref": "section 6: two environments stepped in turn, one ends by termination and one by truncation in the same round, then both start new episodes; nothing may leak across environments or episodes",
+      "envs": [
+        [[[0,0,1,1,""],[1,0,2,2,""],[2,0,4,3,"terminated"]],[[4,0,128,5,""]]],
+        [[[6,0,8,7,""],[7,0,16,8,""],[8,0,32,9,"truncated"]],[[10,0,64,11,""]]]
+      ],
+      "q_online": {"1":[5,0,0,0,0],"2":[5,0,0,0,0],"3":[5,0,0,0,0],"5":[5,0,0,0,0],"7":[5,0,0,0,0],"8":[5,0,0,0,0],"9":[5,0,0,0,0],"11":[5,0,0,0,0]},
+      "q_target": {"1":[6,18,0,0,0],"2":[8,24,0,0,0],"3":[10,30,0,0,0],"5":[20,60,0,0,0],"7":[3,9,0,0,0],"8":[5,15,0,0,0],"9":[4,12,0,0,0],"11":[2,6,0,0,0]},
+      "expected": {
+        "1": {"counts": [2,4,6,8], "samples": [
+          [0,0,1.0,0.5,1,4.0,10.0],[1,0,2.0,0.5,2,6.0,14.0],[2,0,4.0,0.0,3,4.0,4.0],[4,0,128.0,0.5,5,138.0,158.0],
+          [6,0,8.0,0.5,7,9.5,12.5],[7,0,16.0,0.5,8,18.5,23.5],[8,0,32.0,0.5,9,34.0,38.0],[10,0,64.0,0.5,11,65.0,67.0]]},
+        "3": {"counts": [0,0,6,6], "samples": [
+          [0,0,3.0,0.0,3,3.0,3.0],[1,0,4.0,0.0,3,4.0,4.0],[2,0,4.0,0.0,3,4.0,4.0],
+          [6,0,24.0,0.125,9,24.5,25.5],[7,0,32.0,0.25,9,33.0,35.0],[8,0,32.0,0.5,9,34.0,38.0]]}
+      }
+    }
+  ]
+}

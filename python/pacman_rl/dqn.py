@@ -153,6 +153,40 @@ def truncate_log_to(path: Path, upto_env_steps: int) -> tuple[int, int]:
     return len(rows) - len(kept), partial
 
 
+@torch.no_grad()
+def td_target(online, target, ret, disc, o2, double: bool):
+    """Bootstrapped TD target ``y = ret + disc * Q_target(o2, a*)`` for a batch from the n-step replay.
+    ``ret`` is the discounted reward sum over the stored horizon h and ``disc`` is gamma^h (0 after a true
+    terminal, so nothing is bootstrapped there).  Double DQN: the action a* is chosen by the ONLINE network and
+    valued by the TARGET network; otherwise a* is the target network's own maximiser."""
+    if double:
+        a2 = online(o2).argmax(dim=1, keepdim=True)
+        q2 = target(o2).gather(1, a2).squeeze(1)
+    else:
+        q2 = target(o2).max(dim=1).values
+    return ret + disc * q2
+
+
+def collect_step(envs, obs, actions, replay, observe, ep_ret, reset_env):
+    """Advance every environment by one transition and feed the replay.  The replay always receives the
+    observation REACHED by the step (also at an episode end: the real terminal / time-limit observation,
+    which truncated episodes bootstrap from); only afterwards is the environment reset and ``obs[i]`` replaced
+    by the first observation of the new episode.  Returns ``(score, return, died)`` of every episode that ended."""
+    finished = []
+    for i, e in enumerate(envs):
+        _, r, term, trunc, info = e.step(int(actions[i]))
+        nxt = observe(e)
+        replay.add(i, obs[i], int(actions[i]), r, nxt, term, trunc)
+        ep_ret[i] += r
+        if term or trunc:
+            finished.append((info["score"], ep_ret[i], float(info["died"])))
+            ep_ret[i] = 0.0
+            reset_env(e)
+            nxt = observe(e)
+        obs[i] = nxt
+    return finished
+
+
 def checked_train_seed(cfg: "TrainConfig", k: int, resumed: bool = False) -> int:
     """``train_seed`` plus the runtime check that this run's episode stream cannot leave its own block: a fresh run
     starts n_envs episodes and every further episode needs at least one environment transition, so
@@ -232,6 +266,11 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
     recent_scores, recent_rets, recent_deaths, losses = [], [], [], []
     t0 = time.time() - minutes0 * 60
 
+    def reset_env(e):
+        nonlocal episode_k
+        e.reset(checked_train_seed(cfg, episode_k, resumed))
+        episode_k += 1
+
     def save_state():
         n = replay.size
         tmp = out_dir / "resume_replay.tmp.npz"
@@ -269,20 +308,10 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
         explore = rng.random(cfg.n_envs) < eps
         actions = np.where(explore, rng.integers(0, NUM_ACTIONS, cfg.n_envs), greedy)
 
-        for i, e in enumerate(envs):
-            _, r, term, trunc, info = e.step(int(actions[i]))
-            nxt = observe(e)
-            replay.add(i, obs[i], int(actions[i]), r, nxt, term, trunc)
-            ep_ret[i] += r
-            if term or trunc:
-                recent_scores.append(info["score"])
-                recent_rets.append(ep_ret[i])
-                recent_deaths.append(float(info["died"]))
-                ep_ret[i] = 0.0
-                e.reset(checked_train_seed(cfg, episode_k, resumed))
-                episode_k += 1
-                nxt = observe(e)
-            obs[i] = nxt
+        for score, ep_return, died in collect_step(envs, obs, actions, replay, observe, ep_ret, reset_env):
+            recent_scores.append(score)
+            recent_rets.append(ep_return)
+            recent_deaths.append(died)
         env_steps += cfg.n_envs
 
         if replay.size >= cfg.learn_start:
@@ -290,13 +319,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
             while update_budget >= 1.0:
                 update_budget -= 1.0
                 o, a, ret, o2, disc = (t.to(device, non_blocking=True) for t in replay.sample(cfg.batch, rng))
-                with torch.no_grad():
-                    if cfg.double:
-                        a2 = online(o2).argmax(dim=1, keepdim=True)
-                        q2 = target(o2).gather(1, a2).squeeze(1)
-                    else:
-                        q2 = target(o2).max(dim=1).values
-                    y = ret + disc * q2
+                y = td_target(online, target, ret, disc, o2, cfg.double)
                 q = online(o).gather(1, a.unsqueeze(1)).squeeze(1)
                 loss = F.smooth_l1_loss(q, y)
                 opt.zero_grad(set_to_none=True)
