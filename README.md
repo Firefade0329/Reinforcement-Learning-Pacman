@@ -92,6 +92,7 @@ unchanged.
   n-step = 1, so the depth effect under a corrected recipe is still open).
   See `docs/RESULTS.md` (cloud, 120k steps), `results_gpu/RESULTS.md` (local, 300k steps) and
   `docs/RESULTS_COMPARISON.md` (side by side, auto-generated) for numbers, ablations and caveats.
+* Roles, working rules and the phase log: [`docs/RESEARCH_LOG.md`](docs/RESEARCH_LOG.md).
 
 ```
 cd python && pip install -r requirements.txt && python -m pytest tests -q
