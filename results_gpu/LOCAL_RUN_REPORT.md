@@ -13,7 +13,7 @@
 | Python | 3.12.10(虚拟环境) |
 | CPU | 13th Gen Intel Core i7-13700H,14 核 / 20 逻辑核 |
 | 内存 | 15.7 GB |
-| 系统 | Windows 11 Enterprise |
+| 系统 | Windows 11 |
 | 运行方式 | Git Bash 执行 `run_gpu_longrun.sh`;后期因调整并行拆成了单独的 python 进程(见第 4、7 节) |
 
 ## 2. 速度基准(batch 32,每次梯度更新的毫秒数)

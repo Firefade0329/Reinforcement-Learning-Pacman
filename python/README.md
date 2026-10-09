@@ -68,3 +68,18 @@ Notes
 - **Before committing from another machine**, set the repo-local git identity so your global
   e-mail is not attached to commits:
   `git config user.name "Firefade0329" && git config user.email "114788148+Firefade0329@users.noreply.github.com"`
+
+## Second pass: n-step = 1 for every conv architecture (planned, not yet run)
+
+The ablations suggest the default recipe (n-step = 3) hurts the conv nets: with ResNet-4, n-step = 1 scored
+clearly higher in two independent runs (see `docs/RESULTS_COMPARISON.md`).  To test whether depth helps once
+the recipe is fixed, re-run the whole matrix with n-step = 1, into a separate results directory:
+
+```bash
+PACMAN_TRAIN_EXTRA="--n_step 1" PACMAN_SKIP_ALGO=1 PACMAN_RESULTS_DIR="$PWD/results_gpu_nstep1" \
+  bash python/scripts/run_gpu_longrun.sh
+```
+
+`PACMAN_TRAIN_EXTRA` is appended to every training command, `PACMAN_SKIP_ALGO=1` skips the ablation stage.
+Training is resumable: re-run the same command after an interruption.  Generate the report with
+`PACMAN_RESULTS_DIR=... python scripts/make_report.py` and compare with `python scripts/make_comparison.py <dir_a> <dir_b>`.
