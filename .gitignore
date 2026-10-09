@@ -7,3 +7,8 @@ results/runs/*/resume*.tmp*
 results/runs/*/.lock/
 results/runs/*/.lock.stale.*/
 .DS_Store
+results_gpu*/runs/*/resume.pt
+results_gpu*/runs/*/resume_replay.npz
+results_gpu*/runs/*/resume*.tmp*
+results_gpu*/runs/*/.lock/
+results_gpu*/runs/*/.lock.stale.*/

@@ -77,7 +77,7 @@ Original Java agent run headless (150 games, no seeds): mean score 160.5 [143.9,
 
 ## 7. 验收门槛判定(`check_acceptance.py --run-tests` 输出)
 ```
-M1  MUST   PASS      45 passed, 1 skipped in 29.84s
+M1  MUST   PASS      46 passed, 1 skipped in 19.50s
 M3  MUST   PASS      baselines random/greedy-bfs/legacy/safe-heuristic + tabular x3 seeds present
 M4  MUST   PASS      final arch=mlp (chosen on val). score: diff +82.3 [95% CI +68.9, +95.7]; death (legacy - deep): diff +0.2 [95% CI +0.1, +0.2]; per-seed means [246.1, 241.3, 219.7] vs legacy 153.4
 M5  MUST   PASS      score vs tabular: diff +155.3 [95% CI +146.3, +164.5]
@@ -95,6 +95,7 @@ MUST gates: ALL PASS
 - **S1 未达成**:最终神经网络(MLP)的平均得分低于强手写启发式 `safe-heuristic`,差距见第 7 节。"认真写规则"仍然更强。
 - **卷积网络在 12 万步预算下没有超过 `legacy`**(第 3 节):加深并不单调有益(S4)。CNN-2 → ResNet-2 有明显提升,但 ResNet-4、ResNet-8 反而更差且种子间方差更大。深度无收益的结论**只对本预算和本超参成立**:训练曲线在结束时仍在上升,更深的网络很可能需要更多样本。
 - **默认配方对卷积网络可能次优**:所有架构共用同一套超参(未逐架构调参),消融显示去掉 n 步在 ResNet-4 上得分明显更高(第 5 节),这不是事先预期的;原因目前只是假设(例如 ε-贪心探索下 n 步回报带入探索动作的偏差),**没有被实验验证**。因此"深度无收益"也可能部分源于配方而不是网络深度本身。
+- **各结论的稳健性**:消融里只有"去掉 n 步对 ResNet-4 有利"和"距离场有帮助"在独立的第二套实验中复现;去掉 Dueling / Double 的效应在两套实验里符号相反。详见 `docs/RESULTS_COMPARISON.md`(两套结果的并排对比,自动生成)。
 - **输入里有特权信息**:MLP 的工程特征和卷积网络的距离场都由游戏内部状态(BFS 距离)算出;原始网格对照显示距离场对 ResNet-4 有帮助。MLP 表现最好,很可能因为特征直接给出了最短路信息,而不是"神经网络更擅长"。
 - **困难场景**(幽灵 70% 追击,训练中未见)下所有智能体都 100% 被抓,只能比较存活到被抓前吃到的豆数;不能说明任何智能体"学会了对付强追击"。
 - **只有一张地图**,随机起点提供了状态多样性,但不能声称泛化到别的地图。

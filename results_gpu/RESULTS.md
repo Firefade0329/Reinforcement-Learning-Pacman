@@ -57,12 +57,48 @@ Original Java agent run headless (150 games, no seeds): mean score 160.5 [143.9,
 
 最终智能体(按验证得分在 5 种网络中选出):**L5 MLP-DQN**
 
+### 消融相对完整配方的变化(配对,标准场景)
+| 变体 | 基线 | 得分差(变体 − 基线) [95% CI] | 逐种子:变体高于基线的种子数 |
+|---|---|---|---|
+| 去掉 Double | L7 ResNet-4 DQN | -17.5 [-25.1, -9.9] | 1/3 |
+| 去掉 Dueling | L7 ResNet-4 DQN | -10.5 [-18.1, -2.9] | 1/3 |
+| n 步=1(去掉 n 步) | L7 ResNet-4 DQN | +72.5 [+64.3, +80.7] | 3/3 |
+| 原始网格(去掉距离场) | L7 ResNet-4 DQN | -37.5 [-44.7, -30.3] | 0/3 |
+| 去掉 Double | L5 MLP-DQN | +5.0 [-4.3, +14.3] | 2/3 |
+| 去掉 Dueling | L5 MLP-DQN | -10.3 [-20.0, -1.0] | 0/3 |
+| n 步=1(去掉 n 步) | L5 MLP-DQN | -25.8 [-36.9, -14.7] | 0/3 |
+
+注:"逐种子"按种子编号对应(各配置的随机初始化与探索轨迹并不相同,所以只是粗略的方向一致性,不是严格配对)。CI 只反映测试局的抽样波动,**不含训练种子间的差异**;每格只有 3 个训练种子。
+
 ## 6. 曲线
-![curves](../results/figures/learning_curves.png)
+![curves](figures/learning_curves.png)
 
-![final](../results/figures/final_comparison.png)
+![final](figures/final_comparison.png)
 
-## 7. 验收门槛判定(`check_acceptance.py` 输出)
+## 7. 验收门槛判定(`check_acceptance.py --run-tests` 输出)
+```
+M1  MUST   PASS      46 passed, 1 skipped in 19.38s
+M3  MUST   PASS      baselines random/greedy-bfs/legacy/safe-heuristic + tabular x3 seeds present
+M4  MUST   PASS      final arch=mlp (chosen on val). score: diff +110.0 [95% CI +95.8, +123.9]; death (legacy - deep): diff +0.3 [95% CI +0.2, +0.3]; per-seed means [266.3, 252.6, 271.2] vs legacy 153.4
+M5  MUST   PASS      score vs tabular: diff +183.0 [95% CI +173.4, +192.7]
+M6  MUST   PASS      33 runs complete (>=3 seeds per cell)
+M7  MUST   PASS      no changes to Java sources / images / Q-table since base commit
+S1  SHOULD PASS      deep vs safe-heuristic: diff -4.8 [95% CI -19.7, +10.5]; relative -1.8% (target >= -3%)
+S2  SHOULD PASS      res2 vs cnn2: diff +34.2 [95% CI +26.7, +41.6]
+S3  SHOULD PASS      hard: deep vs legacy: diff +40.9 [95% CI +35.7, +46.2]
+S4  SHOULD REPORTED  test score by depth {cnn2: 125.5, res2: 159.7, res4: 160.9, res8: 127.9}; monotone in depth: False
+
+MUST gates: ALL PASS
 ```
 
-```
+## 8. 未达成项与局限(定性说明,数字见上表)
+- **S1 未达成**:最终神经网络(MLP)的平均得分低于强手写启发式 `safe-heuristic`,差距见第 7 节。"认真写规则"仍然更强。
+- **卷积网络在 12 万步预算下没有超过 `legacy`**(第 3 节):加深并不单调有益(S4)。CNN-2 → ResNet-2 有明显提升,但 ResNet-4、ResNet-8 反而更差且种子间方差更大。深度无收益的结论**只对本预算和本超参成立**:训练曲线在结束时仍在上升,更深的网络很可能需要更多样本。
+- **默认配方对卷积网络可能次优**:所有架构共用同一套超参(未逐架构调参),消融显示去掉 n 步在 ResNet-4 上得分明显更高(第 5 节),这不是事先预期的;原因目前只是假设(例如 ε-贪心探索下 n 步回报带入探索动作的偏差),**没有被实验验证**。因此"深度无收益"也可能部分源于配方而不是网络深度本身。
+- **各结论的稳健性**:消融里只有"去掉 n 步对 ResNet-4 有利"和"距离场有帮助"在独立的第二套实验中复现;去掉 Dueling / Double 的效应在两套实验里符号相反。详见 `docs/RESULTS_COMPARISON.md`(两套结果的并排对比,自动生成)。
+- **输入里有特权信息**:MLP 的工程特征和卷积网络的距离场都由游戏内部状态(BFS 距离)算出;原始网格对照显示距离场对 ResNet-4 有帮助。MLP 表现最好,很可能因为特征直接给出了最短路信息,而不是"神经网络更擅长"。
+- **困难场景**(幽灵 70% 追击,训练中未见)下所有智能体都 100% 被抓,只能比较存活到被抓前吃到的豆数;不能说明任何智能体"学会了对付强追击"。
+- **只有一张地图**,随机起点提供了状态多样性,但不能声称泛化到别的地图。
+- **统计力有限**:每个配置 3 个训练种子,逐局 CI 不含种子间方差;差距较小的比较(例如 ResNet-2 与 ResNet-4)不应过度解读。
+- **过程中的工程事件**(详见 `docs/PLAN.md` 偏差记录):两个卷积运行曾被内存不足杀掉后重跑;`res8_s1`、`res8_s2` 使用旧的 float32 回放(与 uint8 回放等价到 1 ulp);虚拟机被挂起后部分运行从断点续训,续训时 episode 会重新开始。被续训过的运行:mlp_s0, mlp_s1, mlp_s2, res4-nodouble_s0, res4-nodouble_s1。
+- **算力**:全部为 CPU、单进程 12 万步;GPU 上更长训练(见 `docs/LOCAL_GPU_RUN_PROMPT.md`)是补充实验,不在本报告内。
