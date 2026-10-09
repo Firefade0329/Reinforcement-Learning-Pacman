@@ -311,25 +311,95 @@ def _load_script(name, monkeypatch):
     return mod
 
 
-def test_matrix_validation_passes_on_committed_results_and_catches_damage(tmp_path, monkeypatch):
-    lib = _load_script("acceptance_lib", monkeypatch)
-    assert lib.validate_matrix() == []  # the committed cloud matrix is complete and consistent
-    # a run whose config disagrees with its name, and a truncated evaluation, must be reported
-    import json
+def _need_committed_results():
+    if not (REPO / "results" / "runs" / "mlp_s0" / "summary.json").exists():
+        pytest.skip("data-integrity test: needs the committed results/ directory (not present in this checkout)")
+
+
+def _damaged_copy(tmp_path, monkeypatch):
+    """Copy one committed run into tmp_path and point the matrix validator at it.  The undamaged copy must
+    produce no problem about that run (control); the tests then break exactly one thing."""
     import shutil
 
-    shutil.copytree(REPO / "results" / "runs" / "mlp_s0", tmp_path / "runs" / "mlp_s0")
+    _need_committed_results()
+    lib = _load_script("acceptance_lib", monkeypatch)
+    run = tmp_path / "runs" / "mlp_s0"
+    shutil.copytree(REPO / "results" / "runs" / "mlp_s0", run)
     monkeypatch.setattr(lib, "RUNS", tmp_path / "runs")
     monkeypatch.setattr(lib, "RESULTS", tmp_path)
-    cfg = json.loads((tmp_path / "runs" / "mlp_s0" / "config.json").read_text())
-    cfg["n_step"] = 1
-    (tmp_path / "runs" / "mlp_s0" / "config.json").write_text(json.dumps(cfg))
-    p = json.loads((tmp_path / "runs" / "mlp_s0" / "test_standard.json").read_text())
-    p["records"] = p["records"][:299]
-    (tmp_path / "runs" / "mlp_s0" / "test_standard.json").write_text(json.dumps(p))
-    problems = lib.validate_matrix()
-    assert any("mlp_s0: config n_step=1" in x for x in problems)
-    assert any("mlp_s0/standard: 299 episodes" in x for x in problems)
+    mine = lambda: [x for x in lib.validate_matrix() if x.startswith("mlp_s0")]  # noqa: E731
+    assert mine() == [], mine()
+    return lib, run, mine
+
+
+def _edit_json(path, fn):
+    import json
+
+    d = json.loads(path.read_text())
+    fn(d)
+    path.write_text(json.dumps(d))
+
+
+def test_matrix_validation_passes_on_committed_results():
+    _need_committed_results()
+    lib = _load_script("acceptance_lib", pytest.MonkeyPatch())
+    assert lib.validate_matrix() == []  # the committed cloud matrix is complete and consistent
+
+
+def test_matrix_validation_catches_config_name_mismatch_and_short_evaluation(tmp_path, monkeypatch):
+    lib, run, mine = _damaged_copy(tmp_path, monkeypatch)
+    _edit_json(run / "config.json", lambda d: d.update(n_step=1))
+    _edit_json(run / "test_standard.json", lambda d: d.update(records=d["records"][:299]))
+    problems = mine()
+    assert any("config n_step=1" in x for x in problems)
+    assert any("standard: 299 episodes" in x for x in problems)
+
+
+def test_matrix_validation_catches_empty_summary(tmp_path, monkeypatch):
+    lib, run, mine = _damaged_copy(tmp_path, monkeypatch)
+    (run / "summary.json").write_text("{}")
+    assert any("summary.json lacks finite" in x for x in mine()), mine()
+
+
+def test_matrix_validation_catches_summary_that_disagrees_with_training_log(tmp_path, monkeypatch):
+    lib, run, mine = _damaged_copy(tmp_path, monkeypatch)
+    _edit_json(run / "summary.json", lambda d: d.update(best_val_score=-999))
+    problems = mine()
+    assert any("outside [0, 377]" in x for x in problems)
+    assert any("best validation row in train_log.jsonl" in x for x in problems)
+    # a plausible but wrong value is caught by the log comparison alone
+    _edit_json(run / "summary.json", lambda d: d.update(best_val_score=1.0))
+    assert any("best validation row in train_log.jsonl" in x for x in mine())
+    # right score, wrong step
+    _edit_json(run / "summary.json", lambda d: d.update(best_val_score=json_best(run), best_env_steps=20000))
+    assert any("best_env_steps=20000 is not where" in x for x in mine())
+
+
+def json_best(run):
+    import json
+
+    return max(json.loads(x)["val_score"] for x in (run / "train_log.jsonl").read_text().splitlines() if '"eval"' in x)
+
+
+def test_matrix_validation_catches_test_summary_that_does_not_match_the_records(tmp_path, monkeypatch):
+    lib, run, mine = _damaged_copy(tmp_path, monkeypatch)
+    import json
+
+    orig = json.loads((run / "test_standard.json").read_text())["records"][0]["score"]
+    _edit_json(run / "test_standard.json", lambda d: d["records"][0].update(score=999))  # summary left unchanged
+    assert any("implausible record" in x for x in mine()), mine()
+    # an in-range edit that the summary no longer matches
+    _edit_json(run / "test_standard.json", lambda d: d["records"][0].update(score=orig - 7 if orig >= 7 else orig + 7))
+    assert any("stored summary score_mean=" in x for x in mine()), mine()
+
+
+def test_matrix_validation_does_not_fill_in_missing_experiment_settings(tmp_path, monkeypatch):
+    lib, run, mine = _damaged_copy(tmp_path, monkeypatch)
+    _edit_json(run / "config.json", lambda d: d.pop("gamma"))
+    assert any("config.json lacks required field(s) ['gamma']" in x for x in mine()), mine()
+    # ... but a historically optional field is still allowed to be absent (the code default applies)
+    _edit_json(run / "config.json", lambda d: (d.update(gamma=0.99), d.pop("dueling")))
+    assert mine() == []
 
 
 def test_m2_check_and_timing_strip(monkeypatch):

@@ -5,6 +5,7 @@ Everything is derived from the raw per-episode records in results/**.json.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -92,7 +93,14 @@ TEST_SEED_LIST = list(range(10000, 10300))
 REQUIRED_FIELDS = ("seed", "score", "steps", "died", "won")
 SHARED_HPARAMS = ("total_env_steps", "lr", "batch", "buffer", "gamma", "tau", "n_envs", "steps_per_update",
                   "eps_start", "eps_end", "eps_frac", "grad_clip", "learn_start", "eval_every", "width")
+# Fields that older config.json files may legitimately lack (they were added after the first runs; the code
+# defaults to these values).  Everything else in SHARED_HPARAMS + REQUIRED_CFG MUST be recorded.
 CFG_DEFAULTS = {"n_step": 3, "double": True, "dueling": True, "obs": "fields"}
+REQUIRED_CFG = ("arch", "seed")
+MAX_SCORE = 377  # gold pellets on the map (Pacman's own start cell is cleared)
+MAX_STEPS = 1000
+SUMMARY_KEYS = ("best_val_score", "best_env_steps", "updates")
+EVAL_SUMMARY_TOL = 1e-6
 
 
 def expected_config(name: str) -> dict:
@@ -123,12 +131,80 @@ def _check_eval_payload(problems, label, p, scenario):
         problems.append(f"{label}: test seeds differ from {TEST_SEED_LIST[0]}..{TEST_SEED_LIST[-1]}")
     elif any(k not in r for r in recs for k in REQUIRED_FIELDS):
         problems.append(f"{label}: records missing fields")
+    else:
+        _check_eval_values(problems, label, p)
+
+
+def _finite(x) -> bool:
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
+
+
+def _check_eval_values(problems, label, p):
+    """Per-episode values are in range, and the stored summary is what the records recompute to."""
+    recs = p["records"]
+    for r in recs:
+        if not (_finite(r["score"]) and 0 <= r["score"] <= MAX_SCORE and _finite(r["steps"]) and 1 <= r["steps"] <= MAX_STEPS
+                and isinstance(r["died"], bool) and isinstance(r["won"], bool) and not (r["died"] and r["won"])):
+            problems.append(f"{label}: implausible record {r}")
+            return
+    s = p.get("summary")
+    if not isinstance(s, dict):
+        problems.append(f"{label}: summary block missing")
+        return
+    n = len(recs)
+    recomputed = {"episodes": n, "score_mean": sum(r["score"] for r in recs) / n,
+                  "death_rate": sum(r["died"] for r in recs) / n, "win_rate": sum(r["won"] for r in recs) / n,
+                  "steps_mean": sum(r["steps"] for r in recs) / n}
+    for k, v in recomputed.items():
+        got = s.get(k)
+        if not _finite(got) or abs(got - v) > EVAL_SUMMARY_TOL:
+            problems.append(f"{label}: stored summary {k}={got} but the {n} per-episode records give {v:.6g}")
+
+
+def _check_summary(problems, n, cfg):
+    """summary.json is well-formed and agrees with the validation rows of train_log.jsonl."""
+    s = load(RUNS / n / "summary.json")
+    if s is None:
+        problems.append(f"{n}: summary.json missing")
+        return
+    bad = [k for k in SUMMARY_KEYS if not (isinstance(s, dict) and _finite(s.get(k)))]
+    if bad:
+        problems.append(f"{n}: summary.json lacks finite {bad}")
+        return
+    if not 0 <= s["best_val_score"] <= MAX_SCORE:
+        problems.append(f"{n}: summary best_val_score={s['best_val_score']} is outside [0, {MAX_SCORE}]")
+    total = cfg.get("total_env_steps")
+    if _finite(total) and not 0 < s["best_env_steps"] <= total:
+        problems.append(f"{n}: summary best_env_steps={s['best_env_steps']} is outside (0, {total}]")
+    log = RUNS / n / "train_log.jsonl"
+    if not log.exists():
+        problems.append(f"{n}: train_log.jsonl missing")
+        return
+    rows = []
+    for line in log.read_text(encoding="utf-8").splitlines():
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            pass  # a damaged line is the log's problem; the check below only needs the eval rows
+    evals = [(r["env_steps"], r["val_score"]) for r in rows if r.get("type") == "eval"]
+    if not evals:
+        problems.append(f"{n}: train_log.jsonl has no validation rows")
+        return
+    best = max(v for _, v in evals)
+    if abs(best - s["best_val_score"]) > EVAL_SUMMARY_TOL:
+        problems.append(f"{n}: summary best_val_score={s['best_val_score']} but the best validation row in train_log.jsonl is {best}")
+    elif s["best_env_steps"] not in [st for st, v in evals if v == best]:
+        problems.append(f"{n}: summary best_env_steps={s['best_env_steps']} is not where train_log.jsonl reaches its best validation score")
+    if _finite(total) and max(st for st, _ in evals) != total:
+        problems.append(f"{n}: train_log.jsonl ends at {max(st for st, _ in evals)} steps, config says {total}")
 
 
 def validate_matrix() -> list[str]:
     """Problems found in the committed matrix (empty list = M6 satisfied): every required run exists with
-    300 test episodes on the fixed test seeds in both scenarios, a summary, and a config matching its name;
-    shared hyper-parameters (incl. training steps) are identical across all runs."""
+    300 test episodes on the fixed test seeds in both scenarios whose stored summaries recompute from the
+    records, a well-formed summary.json that agrees with the validation rows of its training log, and a config
+    that records every experiment setting and matches the run name; shared hyper-parameters (incl. training
+    steps) are identical across all runs."""
     problems: list[str] = []
     for b in BASELINES:
         for sc in ("standard", "hard"):
@@ -143,12 +219,14 @@ def validate_matrix() -> list[str]:
     for n in names:
         for sc in ("standard", "hard"):
             _check_eval_payload(problems, f"{n}/{sc}", run_eval(n, sc), sc)
-        if load(RUNS / n / "summary.json") is None:
-            problems.append(f"{n}: summary.json missing")
         cfg = load(RUNS / n / "config.json")
         if cfg is None:
             problems.append(f"{n}: config.json missing")
             continue
+        missing = [k for k in (*REQUIRED_CFG, *SHARED_HPARAMS) if cfg.get(k) is None]
+        if missing:  # these are experiment settings, not optional fields: never fall back to a default
+            problems.append(f"{n}: config.json lacks required field(s) {missing}")
+        _check_summary(problems, n, cfg)
         exp = expected_config(n)
         for k, v in exp.items():
             if cfg.get(k, CFG_DEFAULTS.get(k)) != v:
@@ -157,7 +235,8 @@ def validate_matrix() -> list[str]:
             if k not in exp and not (k == "obs" and cfg.get("arch") == "mlp") and cfg.get(k, dflt) != dflt:
                 problems.append(f"{n}: config {k}={cfg.get(k)} differs from the default {dflt} without being a named variant")
         for k in SHARED_HPARAMS:
-            seen[k].add(json.dumps(cfg.get(k)))
+            if cfg.get(k) is not None:
+                seen[k].add(json.dumps(cfg.get(k)))
     for k, vals in seen.items():
         if len(vals) > 1:
             problems.append(f"shared hyper-parameter {k} differs across runs: {sorted(vals)}")
