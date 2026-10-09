@@ -8,7 +8,7 @@ import pytest
 from pacman_rl import maps
 from pacman_rl.baselines import LegacyAgent, SafeHeuristicAgent, make_agent
 from pacman_rl.env import STANDARD, EnvConfig, PacmanEnv
-from pacman_rl.evaluate import TEST_SEEDS, VAL_SEEDS, evaluate_named, train_seed
+from pacman_rl.evaluate import EQUIV_SEEDS, TEST_SEEDS, VAL_SEEDS, evaluate_named, train_seed
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -17,6 +17,8 @@ def test_seed_splits_disjoint():
     train = {train_seed(r, k) for r in range(5) for k in range(20000)}
     assert not train & set(VAL_SEEDS) and not train & set(TEST_SEEDS)
     assert not set(VAL_SEEDS) & set(TEST_SEEDS)
+    # fidelity checks of non-learning agents use their own seeds: never the validation/test/training ones
+    assert not set(EQUIV_SEEDS) & (set(VAL_SEEDS) | set(TEST_SEEDS) | train)
 
 
 def test_java_qtable_is_equivalent_to_bfs_direction():
@@ -80,7 +82,7 @@ def test_legacy_replica_matches_original_java_run():
     """results/reference/java_legacy.json holds 150 games of the ORIGINAL Java agent (see
     scripts/run_java_legacy.sh).  The Python replica must be statistically indistinguishable."""
     ref = json.loads((REPO / "results" / "reference" / "java_legacy.json").read_text())["records"]
-    py = evaluate_named("legacy", STANDARD, TEST_SEEDS, workers=4)
+    py = evaluate_named("legacy", STANDARD, EQUIV_SEEDS, workers=4)  # not the test seeds (PLAN section 6)
     for key in ("score", "steps", "died"):
         a = np.array([r[key] for r in ref], float)
         b = np.array([r[key] for r in py], float)

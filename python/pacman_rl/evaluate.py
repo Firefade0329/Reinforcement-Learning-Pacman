@@ -13,6 +13,7 @@ from .env import HARD, STANDARD, EnvConfig, PacmanEnv
 
 VAL_SEEDS = list(range(5000, 5050))  # model selection only
 TEST_SEEDS = list(range(10000, 10300))  # final numbers only
+EQUIV_SEEDS = list(range(20000, 20300))  # fidelity checks of NON-learning agents (never used for selection or final numbers)
 SCENARIOS = {"standard": STANDARD, "hard": HARD}
 TRAIN_SEED_BASE = 1_000_000  # training episode seeds: base * (run_seed + 1) + k  (disjoint from val/test)
 

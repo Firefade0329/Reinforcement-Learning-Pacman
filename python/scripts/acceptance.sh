@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One-command acceptance.
-#   bash python/scripts/acceptance.sh --quick   smoke run (~5-10 min, uses a throw-away results dir)
+#   bash python/scripts/acceptance.sh --quick   smoke run (about 1-10 min, uses a throw-away results dir)
 #   bash python/scripts/acceptance.sh           check the committed full results (results/)
 set -euo pipefail
 cd "$(dirname "$0")/.."            # python/
@@ -24,7 +24,9 @@ if [[ "${1:-}" == "--quick" ]]; then
     $PY -m pacman_rl.cli eval-model --ckpt "$TMP/runs/smoke_$a/best.pt" --split val
     cp "$TMP/runs/smoke_$a/val_standard.json" "$TMP/first_$a.json"
     $PY -m pacman_rl.cli eval-model --ckpt "$TMP/runs/smoke_$a/best.pt" --split val
-    cmp "$TMP/first_$a.json" "$TMP/runs/smoke_$a/val_standard.json" && echo "$a: identical"
+    # NOT `cmp ... && echo`: a failing command in a non-final position of an AND list does not trigger `set -e`
+    cmp "$TMP/first_$a.json" "$TMP/runs/smoke_$a/val_standard.json" || { echo "$a: two evaluations of the same checkpoint DIFFER"; exit 1; }
+    echo "$a: identical"
   done
   rm -rf "$TMP"
   echo "QUICK ACCEPTANCE PASSED"

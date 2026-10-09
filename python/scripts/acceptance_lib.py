@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 import numpy as np
@@ -84,3 +85,85 @@ def best_resnet() -> str | None:
 
 def run_names(arch: str) -> list[str]:
     return [f"{arch}_s{s}" for s in SEEDS]
+
+
+# ------------------------------------------------------------------ matrix validation (M6)
+TEST_SEED_LIST = list(range(10000, 10300))
+REQUIRED_FIELDS = ("seed", "score", "steps", "died", "won")
+SHARED_HPARAMS = ("total_env_steps", "lr", "batch", "buffer", "gamma", "tau", "n_envs", "steps_per_update",
+                  "eps_start", "eps_end", "eps_frac", "grad_clip", "learn_start", "eval_every", "width")
+CFG_DEFAULTS = {"n_step": 3, "double": True, "dueling": True, "obs": "fields"}
+
+
+def expected_config(name: str) -> dict:
+    """What the run name promises about its config (variant flags relative to the defaults)."""
+    base, seed = name.rsplit("_s", 1)
+    exp = {"seed": int(seed)}
+    if base.endswith("raw"):
+        exp.update(arch=base[:-3], obs="grid")
+    elif "-" in base:
+        arch, var = base.split("-", 1)
+        exp["arch"] = arch
+        exp.update({"nodouble": {"double": False}, "nodueling": {"dueling": False}, "nstep1": {"n_step": 1}}[var])
+    else:
+        exp["arch"] = base
+    return exp
+
+
+def _check_eval_payload(problems, label, p, scenario):
+    if p is None:
+        problems.append(f"{label}: missing")
+        return
+    recs = p.get("records", [])
+    if p.get("scenario") != scenario or p.get("split") != "test":
+        problems.append(f"{label}: scenario/split tag is {p.get('scenario')}/{p.get('split')}")
+    if len(recs) != len(TEST_SEED_LIST):
+        problems.append(f"{label}: {len(recs)} episodes (expected {len(TEST_SEED_LIST)})")
+    elif sorted(r.get("seed") for r in recs) != TEST_SEED_LIST:
+        problems.append(f"{label}: test seeds differ from {TEST_SEED_LIST[0]}..{TEST_SEED_LIST[-1]}")
+    elif any(k not in r for r in recs for k in REQUIRED_FIELDS):
+        problems.append(f"{label}: records missing fields")
+
+
+def validate_matrix() -> list[str]:
+    """Problems found in the committed matrix (empty list = M6 satisfied): every required run exists with
+    300 test episodes on the fixed test seeds in both scenarios, a summary, and a config matching its name;
+    shared hyper-parameters (incl. training steps) are identical across all runs."""
+    problems: list[str] = []
+    for b in BASELINES:
+        for sc in ("standard", "hard"):
+            _check_eval_payload(problems, f"baseline {b}/{sc}", baseline(b, sc), sc)
+    for s in SEEDS:
+        for sc in ("standard", "hard"):
+            _check_eval_payload(problems, f"tabular_s{s}/{sc}", run_eval(f"tabular_s{s}", sc), sc)
+    names = [n for a in ARCHS for n in run_names(a)]
+    names += [f"{a}-{v}_s{s}" for a in (ABLATION_ARCH, "mlp") for v in ("nodouble", "nodueling", "nstep1") for s in SEEDS]
+    names += [f"{ABLATION_ARCH}raw_s{s}" for s in SEEDS]
+    seen: dict[str, set] = {k: set() for k in SHARED_HPARAMS}
+    for n in names:
+        for sc in ("standard", "hard"):
+            _check_eval_payload(problems, f"{n}/{sc}", run_eval(n, sc), sc)
+        if load(RUNS / n / "summary.json") is None:
+            problems.append(f"{n}: summary.json missing")
+        cfg = load(RUNS / n / "config.json")
+        if cfg is None:
+            problems.append(f"{n}: config.json missing")
+            continue
+        exp = expected_config(n)
+        for k, v in exp.items():
+            if cfg.get(k, CFG_DEFAULTS.get(k)) != v:
+                problems.append(f"{n}: config {k}={cfg.get(k)} but the run name implies {v}")
+        for k, dflt in CFG_DEFAULTS.items():
+            if k not in exp and not (k == "obs" and cfg.get("arch") == "mlp") and cfg.get(k, dflt) != dflt:
+                problems.append(f"{n}: config {k}={cfg.get(k)} differs from the default {dflt} without being a named variant")
+        for k in SHARED_HPARAMS:
+            seen[k].add(json.dumps(cfg.get(k)))
+    for k, vals in seen.items():
+        if len(vals) > 1:
+            problems.append(f"shared hyper-parameter {k} differs across runs: {sorted(vals)}")
+    return problems
+
+
+def strip_timing(line: str) -> str:
+    """'46 passed, 1 skipped in 20.31s (0:00:20)' -> '46 passed, 1 skipped' (stable across machines)."""
+    return re.sub(r" in [0-9.]+s( \([0-9:]+\))?\s*$", "", line.strip())

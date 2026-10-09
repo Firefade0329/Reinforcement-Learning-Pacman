@@ -294,3 +294,45 @@ def test_pid_alive_is_portable():
     assert mod.pid_alive(os.getpid())
     assert not mod.pid_alive(0) and not mod.pid_alive(-5)
     assert not mod.pid_alive(999999999)  # no such process
+
+
+def _load_script(name):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(name, REPO / "python" / "scripts" / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    import sys
+
+    sys.path.insert(0, str(REPO / "python" / "scripts"))
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_matrix_validation_passes_on_committed_results_and_catches_damage(tmp_path, monkeypatch):
+    lib = _load_script("acceptance_lib")
+    assert lib.validate_matrix() == []  # the committed cloud matrix is complete and consistent
+    # a run whose config disagrees with its name, and a truncated evaluation, must be reported
+    import json
+    import shutil
+
+    shutil.copytree(REPO / "results" / "runs" / "mlp_s0", tmp_path / "runs" / "mlp_s0")
+    monkeypatch.setattr(lib, "RUNS", tmp_path / "runs")
+    monkeypatch.setattr(lib, "RESULTS", tmp_path)
+    cfg = json.loads((tmp_path / "runs" / "mlp_s0" / "config.json").read_text())
+    cfg["n_step"] = 1
+    (tmp_path / "runs" / "mlp_s0" / "config.json").write_text(json.dumps(cfg))
+    p = json.loads((tmp_path / "runs" / "mlp_s0" / "test_standard.json").read_text())
+    p["records"] = p["records"][:299]
+    (tmp_path / "runs" / "mlp_s0" / "test_standard.json").write_text(json.dumps(p))
+    problems = lib.validate_matrix()
+    assert any("mlp_s0: config n_step=1" in x for x in problems)
+    assert any("mlp_s0/standard: 299 episodes" in x for x in problems)
+
+
+def test_m2_check_and_timing_strip():
+    chk = _load_script("check_acceptance")
+    status, detail = chk.check_m2()
+    assert status == "PASS" and "identical" in detail, (status, detail)
+    lib = _load_script("acceptance_lib")
+    assert lib.strip_timing("46 passed, 1 skipped in 20.31s") == "46 passed, 1 skipped"
+    assert lib.strip_timing("45 passed, 1 skipped in 95.89s (0:01:35)") == "45 passed, 1 skipped"

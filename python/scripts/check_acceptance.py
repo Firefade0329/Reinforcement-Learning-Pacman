@@ -28,15 +28,38 @@ def fmt_paired(label, a, b):
     return d, lo, hi, f"{label}: diff {d:+.1f} [95% CI {lo:+.1f}, {hi:+.1f}]"
 
 
+def check_m2():
+    """Reproducibility on THIS machine: one committed MLP checkpoint evaluated twice must give identical
+    per-episode results.  (The full smoke run is `bash python/scripts/acceptance.sh --quick`.)"""
+    try:
+        sys.path.insert(0, str(L.ROOT / "python"))
+        from pacman_rl.dqn import evaluate_model, load_checkpoint
+        from pacman_rl.env import STANDARD
+        from pacman_rl.evaluate import VAL_SEEDS
+    except Exception as e:  # noqa: BLE001
+        return "MISSING", f"cannot import torch / pacman_rl ({type(e).__name__}); run acceptance.sh --quick instead"
+    ckpts = [L.RUNS / n / "best.pt" for n in L.run_names("mlp") if (L.RUNS / n / "best.pt").exists()]
+    if not ckpts:
+        return "MISSING", "no committed MLP checkpoint found"
+    model, cfg, _ = load_checkpoint(ckpts[0], "cpu")
+    a = evaluate_model(model, cfg, STANDARD, VAL_SEEDS[:10])
+    b = evaluate_model(model, cfg, STANDARD, VAL_SEEDS[:10])
+    ok = a == b
+    return ("PASS" if ok else "FAIL"), (f"{ckpts[0].parent.name}/best.pt evaluated twice on 10 validation seeds (cpu): "
+                                       f"{'identical' if ok else 'DIFFERENT'}")
+
+
 def main(run_tests: bool):
     # ---- M1 / M2 (tests) ---------------------------------------------------------------
     if run_tests:
-        r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-x", str(L.ROOT / "python" / "tests")],
+        r = subprocess.run([sys.executable, "-m", "pytest", "-q", str(L.ROOT / "python" / "tests")],
                            cwd=L.ROOT / "python", env={**os.environ, "PYTHONPATH": str(L.ROOT / "python")},
                            capture_output=True, text=True)
-        add("M1", "MUST", "PASS" if r.returncode == 0 else "FAIL", r.stdout.strip().splitlines()[-1] if r.stdout else r.stderr[-200:])
+        add("M1", "MUST", "PASS" if r.returncode == 0 else "FAIL", L.strip_timing(r.stdout.strip().splitlines()[-1]) if r.stdout else r.stderr[-200:])
     else:
         add("M1", "MUST", "MISSING", "run with --run-tests (or: python -m pytest python/tests)")
+    status, detail = check_m2()
+    add("M2", "MUST", status, detail)
 
     # ---- M3 baselines + tabular --------------------------------------------------------
     base = {b: L.baseline(b) for b in L.BASELINES}
@@ -72,13 +95,11 @@ def main(run_tests: bool):
     else:
         add("M5", "MUST", "MISSING", "needs depth-group runs + tabular runs")
 
-    # ---- M6 matrix completeness + report freshness ------------------------------------
-    need = [n for a in L.ARCHS for n in L.run_names(a)]
-    base_arch = L.ABLATION_ARCH
-    need += [f"{a}-{v}_s{s}" for a in (base_arch, "mlp") for v in ("nodouble", "nodueling", "nstep1") for s in L.SEEDS]
-    absent = [n for n in need if L.run_eval(n) is None or L.run_eval(n, "hard") is None]
-    add("M6", "MUST", "PASS" if not absent else "MISSING",
-        f"{len(need)} runs complete (>=3 seeds per cell)" if not absent else f"missing runs: {absent[:6]}{'...' if len(absent) > 6 else ''}")
+    # ---- M6 matrix completeness and consistency ---------------------------------------
+    problems = L.validate_matrix()
+    add("M6", "MUST", "PASS" if not problems else "FAIL",
+        "all required runs present: 300 test episodes on the fixed seeds in both scenarios, summaries, configs match run "
+        "names, shared hyper-parameters identical" if not problems else f"{len(problems)} problem(s): {problems[:3]}{'...' if len(problems) > 3 else ''}")
 
     # ---- M7 Java untouched -------------------------------------------------------------
     r = subprocess.run(["git", "diff", "--stat", L.JAVA_BASE_COMMIT, "--", "ReinforcementLearning", "HumanPlayGame",
@@ -91,8 +112,11 @@ def main(run_tests: bool):
     if arch and deep.get("standard") is not None and base["safe-heuristic"]:
         safe = L.per_episode(base["safe-heuristic"], "score")
         rel = (deep["standard"].mean() - safe.mean()) / safe.mean()
-        _, _, _, txt = fmt_paired("deep vs safe-heuristic", deep["standard"], safe)
-        add("S1", "SHOULD", "PASS" if rel >= -0.03 else "FAIL", f"{txt}; relative {rel * 100:+.1f}% (target >= -3%)")
+        _, lo_s, _, txt = fmt_paired("deep vs safe-heuristic", deep["standard"], safe)
+        bound = -0.03 * safe.mean()
+        add("S1", "SHOULD", "PASS" if rel >= -0.03 else "FAIL",
+            f"{txt}; relative {rel * 100:+.1f}% (pre-set point-estimate target >= -3%); "
+            f"non-inferiority NOT the same thing: CI lower bound {lo_s:+.1f} vs -3% bound {bound:+.1f} -> shown: {lo_s >= bound}")
     else:
         add("S1", "SHOULD", "MISSING", "needs deep + safe-heuristic")
 
