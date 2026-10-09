@@ -59,11 +59,16 @@ def cmd_tabular(a):
             print(f"tabular-q s{a.seed} {scen}/{split}: {fmt(p['summary'])}")
 
 
-def cmd_train(a):
-    from .dqn import TrainConfig, train
+def train_config_from_args(a):
+    from .dqn import TrainConfig
 
-    kw = {f.name: getattr(a, f.name) for f in fields(TrainConfig) if getattr(a, f.name, None) is not None}
-    cfg = TrainConfig(**kw)
+    return TrainConfig(**{f.name: getattr(a, f.name) for f in fields(TrainConfig) if getattr(a, f.name, None) is not None})
+
+
+def cmd_train(a):
+    from .dqn import train
+
+    cfg = train_config_from_args(a)
     name = a.name or f"{cfg.arch}_s{cfg.seed}"
     out = RESULTS / "runs" / name
     print(f"training {name} -> {rel(out)}\n{cfg}", flush=True)
@@ -155,7 +160,7 @@ def cmd_replay(a):
     print(label, a.scenario, "-> score/steps/died/won", record(act, cfg, a.seed, out, label), rel(out))
 
 
-def main():
+def build_parser():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -182,7 +187,7 @@ def main():
     for k, t in [("width", int), ("n_step", int), ("batch", int), ("buffer", int), ("learn_start", int),
                  ("n_envs", int), ("steps_per_update", int), ("total_env_steps", int), ("eval_every", int),
                  ("seed", int), ("threads", int), ("lr", float), ("gamma", float), ("tau", float),
-                 ("eps_end", float), ("eps_frac", float)]:
+                 ("eps_start", float), ("eps_end", float), ("eps_frac", float), ("grad_clip", float)]:
         p.add_argument(f"--{k}", type=t)
     p.add_argument("--no-resume", action="store_true", help="ignore resume.pt and start from scratch")
     p.add_argument("--no-double", dest="double", action="store_false", default=None)
@@ -214,7 +219,11 @@ def main():
     p.add_argument("--out")
     p.set_defaults(fn=cmd_replay)
 
-    a = ap.parse_args()
+    return ap
+
+
+def main():
+    a = build_parser().parse_args()
     a.fn(a)
 
 

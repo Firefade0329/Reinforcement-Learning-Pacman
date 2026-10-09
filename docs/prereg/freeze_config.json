@@ -1,0 +1,30 @@
+{
+  "status": "draft",
+  "_comment": "Frozen configuration of the preregistered architecture x n-step study.  status becomes 'frozen' only when every null below has been filled in at the freeze commit; `scripts/prereg.py run` refuses to start the formal runs before that.",
+  "matrix_file": "matrix_v0.3.1.csv",
+  "matrix_sha256": "5cbd4e7b2cf79f65c96180acfc61b1914fe2e8521c036218bc7c9a4db59f0dfe",
+  "run_order": "fixed by the 'order' column of the matrix file (dispatched in that order); not generated from any scheduling seed",
+  "seeds": {
+    "val_set": "prereg_val",
+    "final_test_set": "prereg_test",
+    "smoke_val_set": "smoke_eval",
+    "formal_run_seeds": [100, 101, 102, 103, 104],
+    "smoke_run_seeds": [900, 901],
+    "train_episode_index_max": 300008
+  },
+  "fixed_hparams": {"eps_start": 1.0, "eps_end": 0.05, "eps_frac": 0.4, "tau": 0.01, "grad_clip": 10.0},
+  "final_eval": {"device": "cpu", "threads": 1, "scenarios": ["standard"], "optional_scenarios": ["hard"]},
+  "training": {"device": "cuda", "max_workers_without_explicit_setting": 2},
+  "to_fill_at_freeze": {
+    "machine": null,
+    "workers": null,
+    "frozen_commit": null,
+    "analysis_script": null,
+    "analysis_script_sha256": null,
+    "preregistration_document_sha256": null,
+    "dependency_lock_sha256": null,
+    "driver_and_os_note": null,
+    "power_and_sleep_settings_confirmed": null,
+    "hard_scenario_will_run": null
+  }
+}
