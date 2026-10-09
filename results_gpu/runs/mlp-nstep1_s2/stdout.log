@@ -1,0 +1,21 @@
+training mlp-nstep1_s2 -> <repo>\python\..\results_gpu\runs\mlp-nstep1_s2
+TrainConfig(arch='mlp', obs='fields', width=16, double=True, dueling=True, n_step=1, gamma=0.99, lr=0.0005, batch=32, buffer=100000, learn_start=4000, n_envs=8, steps_per_update=4, total_env_steps=300000, tau=0.01, eps_start=1.0, eps_end=0.05, eps_frac=0.4, grad_clip=10.0, eval_every=20000, seed=2, threads=1, device='cpu')
+[val] steps=20000 updates=4002 val_score=196.8 death=0.90 win=0.10 (1.0 min)
+[val] steps=40000 updates=9002 val_score=172.0 death=0.96 win=0.04 (2.3 min)
+[val] steps=60000 updates=14002 val_score=206.3 death=0.92 win=0.08 (3.7 min)
+[val] steps=80000 updates=19002 val_score=200.6 death=0.82 win=0.18 (5.1 min)
+[val] steps=100000 updates=24002 val_score=177.5 death=0.92 win=0.08 (6.4 min)
+[val] steps=120000 updates=29002 val_score=206.9 death=0.92 win=0.08 (7.8 min)
+[val] steps=140000 updates=34002 val_score=214.4 death=0.80 win=0.20 (9.2 min)
+[val] steps=160000 updates=39002 val_score=221.8 death=0.88 win=0.12 (10.6 min)
+[val] steps=180000 updates=44002 val_score=228.8 death=0.78 win=0.22 (12.0 min)
+[val] steps=200000 updates=49002 val_score=244.1 death=0.82 win=0.18 (13.5 min)
+[val] steps=220000 updates=54002 val_score=231.3 death=0.84 win=0.16 (14.9 min)
+[val] steps=240000 updates=59002 val_score=201.7 death=0.92 win=0.08 (16.4 min)
+[val] steps=260000 updates=64002 val_score=139.4 death=0.96 win=0.00 (18.0 min)
+[val] steps=280000 updates=69002 val_score=235.8 death=0.76 win=0.24 (19.6 min)
+[val] steps=300000 updates=74002 val_score=211.7 death=0.84 win=0.16 (21.1 min)
+[final] steps=300000 updates=74002 val_score=211.7 death=0.84 win=0.16 (21.2 min)
+{"best_val_score": 244.06, "best_env_steps": 200000, "updates": 74002, "minutes": 21.218657692273457}
+mlp-nstep1_s2 standard/test: score 218.5 [205.1, 232.5]  death 0.82  win 0.18  steps 306
+mlp-nstep1_s2 hard/test: score 66.1 [60.8, 71.7]  death 1.00  win 0.00  steps 80

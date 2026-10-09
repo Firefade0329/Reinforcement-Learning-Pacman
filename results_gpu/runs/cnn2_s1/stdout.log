@@ -1,0 +1,21 @@
+training cnn2_s1 -> <repo>\python\..\results_gpu\runs\cnn2_s1
+TrainConfig(arch='cnn2', obs='fields', width=16, double=True, dueling=True, n_step=3, gamma=0.99, lr=0.0005, batch=32, buffer=100000, learn_start=4000, n_envs=8, steps_per_update=4, total_env_steps=300000, tau=0.01, eps_start=1.0, eps_end=0.05, eps_frac=0.4, grad_clip=10.0, eval_every=20000, seed=1, threads=1, device='cuda')
+[val] steps=20000 updates=3998 val_score=15.5 death=1.00 win=0.00 (2.0 min)
+[val] steps=40000 updates=8998 val_score=35.4 death=1.00 win=0.00 (4.2 min)
+[val] steps=60000 updates=13998 val_score=39.7 death=1.00 win=0.00 (6.5 min)
+[val] steps=80000 updates=18998 val_score=45.5 death=1.00 win=0.00 (8.8 min)
+[val] steps=100000 updates=23998 val_score=53.5 death=1.00 win=0.00 (11.2 min)
+[val] steps=120000 updates=28998 val_score=61.1 death=1.00 win=0.00 (13.5 min)
+[val] steps=140000 updates=33998 val_score=88.8 death=1.00 win=0.00 (15.9 min)
+[val] steps=160000 updates=38998 val_score=73.6 death=1.00 win=0.00 (18.3 min)
+[val] steps=180000 updates=43998 val_score=89.4 death=1.00 win=0.00 (20.7 min)
+[val] steps=200000 updates=48998 val_score=81.6 death=1.00 win=0.00 (23.0 min)
+[val] steps=220000 updates=53998 val_score=98.7 death=1.00 win=0.00 (25.4 min)
+[val] steps=240000 updates=58998 val_score=118.4 death=1.00 win=0.00 (27.8 min)
+[val] steps=260000 updates=63998 val_score=99.4 death=1.00 win=0.00 (30.2 min)
+[val] steps=280000 updates=68998 val_score=118.1 death=1.00 win=0.00 (32.6 min)
+[val] steps=300000 updates=73998 val_score=118.0 death=1.00 win=0.00 (35.0 min)
+[final] steps=300000 updates=73998 val_score=118.0 death=1.00 win=0.00 (35.2 min)
+{"best_val_score": 118.4, "best_env_steps": 240000, "updates": 73998, "minutes": 35.21276945273082}
+cnn2_s1 standard/test: score 125.8 [117.3, 134.3]  death 1.00  win 0.00  steps 167
+cnn2_s1 hard/test: score 53.0 [49.2, 57.0]  death 1.00  win 0.00  steps 59

@@ -1,0 +1,28 @@
+﻿.............................................F                           [100%]
+================================== FAILURES ===================================
+________________________ test_stale_lock_is_taken_over ________________________
+
+tmp_path = WindowsPath('<local>/_cache/tmp/pytest-of-user/pytest-3/test_stale_lock_is_taken_over0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000188D04C38F0>
+
+    def test_stale_lock_is_taken_over(tmp_path, monkeypatch):
+        import importlib.util
+        import sys
+    
+        spec = importlib.util.spec_from_file_location("run_experiments", REPO / "python" / "scripts" / "run_experiments.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        run = tmp_path / "r"
+        run.mkdir()
+        assert mod.take_lock(run) and not mod.take_lock(run)  # held by this (alive) process
+        (run / ".lock" / "pid").write_text("999999999")      # owner that does not exist
+>       assert mod.take_lock(run)                              # stale -> taken over
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert False
+E        +  where False = <function take_lock at 0x00000188D0595F80>(WindowsPath('<local>/_cache/tmp/pytest-of-user/pytest-3/test_stale_lock_is_taken_over0/r'))
+E        +    where <function take_lock at 0x00000188D0595F80> = <module 'run_experiments' from '<repo>\\python\\scripts\\run_experiments.py'>.take_lock
+
+tests\test_learning.py:284: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_learning.py::test_stale_lock_is_taken_over - AssertionError...
+1 failed, 45 passed in 16.14s

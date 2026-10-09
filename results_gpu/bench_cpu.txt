@@ -1,0 +1,6 @@
+﻿device: cpu
+mlp   batch 32:     0.9 ms/update
+cnn2  batch 32:     2.9 ms/update
+res2  batch 32:     7.0 ms/update
+res4  batch 32:    11.2 ms/update
+res8  batch 32:    21.4 ms/update

@@ -1,0 +1,21 @@
+training res4-nodueling_s1 -> <repo>\results_gpu\runs\res4-nodueling_s1
+TrainConfig(arch='res4', obs='fields', width=16, double=True, dueling=False, n_step=3, gamma=0.99, lr=0.0005, batch=32, buffer=100000, learn_start=4000, n_envs=8, steps_per_update=4, total_env_steps=300000, tau=0.01, eps_start=1.0, eps_end=0.05, eps_frac=0.4, grad_clip=10.0, eval_every=20000, seed=1, threads=1, device='cuda')
+[val] steps=20000 updates=3998 val_score=20.0 death=1.00 win=0.00 (3.1 min)
+[val] steps=40000 updates=8998 val_score=28.7 death=1.00 win=0.00 (6.9 min)
+[val] steps=60000 updates=13998 val_score=56.3 death=1.00 win=0.00 (10.8 min)
+[val] steps=80000 updates=18998 val_score=57.9 death=1.00 win=0.00 (14.6 min)
+[val] steps=100000 updates=23998 val_score=78.4 death=1.00 win=0.00 (18.5 min)
+[val] steps=120000 updates=28998 val_score=109.1 death=1.00 win=0.00 (22.5 min)
+[val] steps=140000 updates=33998 val_score=91.7 death=1.00 win=0.00 (26.4 min)
+[val] steps=160000 updates=38998 val_score=137.8 death=1.00 win=0.00 (30.4 min)
+[val] steps=180000 updates=43998 val_score=138.2 death=1.00 win=0.00 (34.4 min)
+[val] steps=200000 updates=48998 val_score=147.7 death=1.00 win=0.00 (38.4 min)
+[val] steps=220000 updates=53998 val_score=55.3 death=1.00 win=0.00 (42.3 min)
+[val] steps=240000 updates=58998 val_score=104.3 death=1.00 win=0.00 (46.3 min)
+[val] steps=260000 updates=63998 val_score=71.6 death=1.00 win=0.00 (50.2 min)
+[val] steps=280000 updates=68998 val_score=118.0 death=1.00 win=0.00 (54.1 min)
+[val] steps=300000 updates=73998 val_score=91.8 death=1.00 win=0.00 (58.0 min)
+[final] steps=300000 updates=73998 val_score=91.8 death=1.00 win=0.00 (58.2 min)
+{"best_val_score": 147.68, "best_env_steps": 200000, "updates": 73998, "minutes": 58.21219718058904}
+res4-nodueling_s1 standard/test: score 131.0 [121.2, 141.3]  death 0.99  win 0.00  steps 229
+res4-nodueling_s1 hard/test: score 56.2 [50.3, 62.3]  death 1.00  win 0.00  steps 67

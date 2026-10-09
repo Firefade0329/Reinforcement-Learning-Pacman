@@ -1,0 +1,21 @@
+training mlp-nodouble_s2 -> <repo>\python\..\results_gpu\runs\mlp-nodouble_s2
+TrainConfig(arch='mlp', obs='fields', width=16, double=False, dueling=True, n_step=3, gamma=0.99, lr=0.0005, batch=32, buffer=100000, learn_start=4000, n_envs=8, steps_per_update=4, total_env_steps=300000, tau=0.01, eps_start=1.0, eps_end=0.05, eps_frac=0.4, grad_clip=10.0, eval_every=20000, seed=2, threads=1, device='cpu')
+[val] steps=20000 updates=3998 val_score=63.6 death=1.00 win=0.00 (0.9 min)
+[val] steps=40000 updates=8998 val_score=88.6 death=1.00 win=0.00 (2.2 min)
+[val] steps=60000 updates=13998 val_score=135.4 death=0.98 win=0.02 (3.5 min)
+[val] steps=80000 updates=18998 val_score=187.7 death=0.90 win=0.10 (4.8 min)
+[val] steps=100000 updates=23998 val_score=178.7 death=1.00 win=0.00 (6.1 min)
+[val] steps=120000 updates=28998 val_score=218.9 death=0.80 win=0.20 (7.4 min)
+[val] steps=140000 updates=33998 val_score=261.0 death=0.68 win=0.32 (8.8 min)
+[val] steps=160000 updates=38998 val_score=261.2 death=0.78 win=0.22 (10.1 min)
+[val] steps=180000 updates=43998 val_score=290.9 death=0.70 win=0.30 (11.5 min)
+[val] steps=200000 updates=48998 val_score=227.6 death=0.94 win=0.00 (13.0 min)
+[val] steps=220000 updates=53998 val_score=260.5 death=0.72 win=0.28 (14.4 min)
+[val] steps=240000 updates=58998 val_score=259.2 death=0.80 win=0.20 (15.9 min)
+[val] steps=260000 updates=63998 val_score=123.0 death=0.98 win=0.00 (17.4 min)
+[val] steps=280000 updates=68998 val_score=247.3 death=0.70 win=0.30 (18.9 min)
+[val] steps=300000 updates=73998 val_score=240.6 death=0.72 win=0.28 (20.4 min)
+[final] steps=300000 updates=73998 val_score=240.6 death=0.72 win=0.28 (20.6 min)
+{"best_val_score": 290.88, "best_env_steps": 180000, "updates": 73998, "minutes": 20.579200605551403}
+mlp-nodouble_s2 standard/test: score 267.8 [254.7, 280.8]  death 0.70  win 0.30  steps 427
+mlp-nodouble_s2 hard/test: score 87.3 [80.0, 95.1]  death 1.00  win 0.00  steps 116
