@@ -257,6 +257,67 @@ def interrupt_resume_check(path: Path) -> dict:
     return {"ok": bool(ok), "note": "resume exists for exploratory work; formal runs never resume"}
 
 
+# ------------------------------------------------------------------ sealed final evaluation
+def make_manifest(results: Path, analysis_script: Path, out: Path, *, rows=None, freeze=None, allow_unfrozen=False, tiny=None) -> str:
+    """Check that all runs are complete and untouched and write the integrity manifest.  Returns its SHA-256."""
+    from pacman_rl import seal
+
+    rows, freeze = rows or PR.load_matrix(), freeze or PR.load_freeze()
+    manifest = seal.build_manifest(results, rows, freeze, analysis_script, allow_unfrozen=allow_unfrozen, tiny_overrides=tiny)
+    return seal.write_manifest(out, manifest)
+
+
+def final_eval_run(results: Path, name: str, token, scenarios=("standard",), hard=False) -> dict[str, str]:
+    """Evaluate last.pt and best.pt of one run on the sealed seeds (CPU, 1 thread) into runs/<name>/eval_final/{last,best}/.
+    If best and last hold identical weights the evaluation is run once and the file is reused (and says so)."""
+    from pacman_rl.evalrun import evaluate_checkpoint
+
+    run = results / "runs" / name
+    done = json.loads((run / "run_complete.json").read_text())
+    out = run / "eval_final"
+    kw = dict(split=PR.load_freeze()["seeds"]["final_test_set"], device="cpu", threads=1, unseal=token)
+    written = {}
+    for sc, path in evaluate_checkpoint(run / "last.pt", scenarios=list(scenarios), out_dir=out, label="last", **kw).items():
+        written[f"last/{sc}"] = P.file_sha256(path)
+    if done["best_state_sha256"] == done["last_state_sha256"]:
+        for sc in scenarios:
+            payload = json.loads((out / "last" / f"{sc}.json").read_text())
+            payload["agent"] = f"{name}/best"
+            payload["extra"]["checkpoint"] = {**payload["extra"]["checkpoint"], "label": "best", "file_sha256": done["best_file_sha256"], "reused_from": "last"}
+            (out / "best").mkdir(parents=True, exist_ok=True)
+            if (out / "best" / f"{sc}.json").exists():
+                raise FileExistsError(f"{name}: best/{sc}.json exists")
+            (out / "best" / f"{sc}.json").write_text(json.dumps(payload, indent=1))
+            written[f"best/{sc}"] = P.file_sha256(out / "best" / f"{sc}.json")
+    else:
+        for sc, path in evaluate_checkpoint(run / "best.pt", scenarios=list(scenarios), out_dir=out, label="best", **kw).items():
+            written[f"best/{sc}"] = P.file_sha256(path)
+    if hard:
+        for sc, path in evaluate_checkpoint(run / "last.pt", scenarios=["hard"], out_dir=out, label="last", **kw).items():
+            written[f"last/{sc}"] = P.file_sha256(path)
+    return written
+
+
+def final_eval(manifest: Path, results: Path, analysis_script: Path, *, unseal: bool, hard=False, rows=None, freeze=None,
+               allow_unfrozen=False, tiny=None) -> dict:
+    """The ONLY code path that reads the sealed test seeds.  Verifies the manifest against the files on disk first."""
+    from pacman_rl import seal
+
+    if not unseal:
+        raise Refused("the sealed test seeds are only read with an explicit --unseal (and a verified manifest)")
+    reject_env()
+    rows, freeze = rows or PR.load_matrix(), freeze or PR.load_freeze()
+    try:
+        token = seal.verify_manifest(manifest, results, rows, freeze, analysis_script, allow_unfrozen=allow_unfrozen, tiny_overrides=tiny)
+    except seal.ManifestError as e:
+        raise Refused(str(e))
+    with open(results / "unseal_log.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps({"utc": utc(), "manifest_sha256": token.manifest_sha256, "runs": len(rows)}) + "\n")
+    index = {r["run_name"]: final_eval_run(results, r["run_name"], token, hard=hard) for r in rows}
+    (results / "final_eval_index.json").write_text(json.dumps(index, indent=1), encoding="utf-8")  # file hashes only, no scores
+    return index
+
+
 # ------------------------------------------------------------------ command line
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -267,6 +328,16 @@ def main(argv=None):
     p.add_argument("--workers", type=int)
     p.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS)
     p.add_argument("--only", nargs="*")
+    p = sub.add_parser("manifest", help="verify that all 30 runs are complete and untouched; write the integrity manifest")
+    p.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS)
+    p.add_argument("--analysis-script", type=Path, required=True)
+    p.add_argument("--out", type=Path)
+    p = sub.add_parser("final-eval", help="the only step that reads the sealed test seeds (CPU, 1 thread)")
+    p.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS)
+    p.add_argument("--manifest", type=Path, required=True)
+    p.add_argument("--analysis-script", type=Path, required=True)
+    p.add_argument("--unseal", action="store_true", help="explicit confirmation that the test seeds may be read now")
+    p.add_argument("--hard", action="store_true", help="also evaluate last.pt on the optional hard scenario")
     p = sub.add_parser("smoke")
     p.add_argument("--profile", choices=list(PROFILES), default="quick")
     p.add_argument("--device", default="cuda", choices=["cpu", "cuda", "auto"])
@@ -289,6 +360,18 @@ def main(argv=None):
         out = run_matrix(PR.load_matrix(), freeze, a.results_dir, workers, only=a.only)
         print(json.dumps(out, indent=1))
         return 0 if all(v in ("done", "skipped") for v in out.values()) else 1
+    if a.cmd == "manifest":
+        reject_env()
+        try:
+            sha = make_manifest(a.results_dir, a.analysis_script, a.out or a.results_dir / "seal_manifest.json")
+        except Exception as e:  # noqa: BLE001
+            raise Refused(str(e))
+        print(f"manifest written, sha256 {sha}")
+        return 0
+    if a.cmd == "final-eval":
+        index = final_eval(a.manifest, a.results_dir, a.analysis_script, unseal=a.unseal, hard=a.hard)
+        print(f"final evaluation written for {len(index)} runs (see final_eval_index.json); scores are not printed")
+        return 0
     if a.cmd == "smoke":
         pairs = [(x.split(":")[0], int(x.split(":")[1]), int(x.split(":")[2])) for x in a.pairs] if a.pairs else None
         rep = smoke(a.profile, a.device, a.results_dir, a.steps, pairs, a.workers)
