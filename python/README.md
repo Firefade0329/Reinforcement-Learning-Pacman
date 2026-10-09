@@ -90,7 +90,10 @@ Training writes `resume.pt` / `resume_replay.npz` at every evaluation boundary a
 same command is run again.  A resumed run is **successful but not bit-equivalent** to an uninterrupted one:
 environment states and the pending n-step queues are not saved (at most 2 transitions per environment are
 lost) and new episodes use unused seeds, so the effect on the training distribution is not quantified.
-On resume the log is truncated to the checkpoint and a `{"type": "resume", ...}` row marks the point; logs of
+On resume the log is truncated to the checkpoint and a `{"type": "resume", ...}` row marks the point
+(`dropped_rows` = complete rows discarded, `partial_rows` = 1 if the last line was a half-written row from a
+killed process; in that case the original log is first copied to `train_log.jsonl.partial-tail.bak`, while a
+damaged line anywhere else stops the resume with an error naming the line).  Logs of
 runs resumed with the older code (cloud `res4_s0`, local `mlp_s0/s1/s2`) can contain duplicated or
 backward-going rows (weights and `summary.json` are unaffected).  Evaluation also depends on the device: the
 same checkpoint evaluated on GPU and on CPU gives different per-episode results.

@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import shutil
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -108,24 +109,47 @@ def load_checkpoint(path: Path, device: str = "cpu"):
     return model.to(resolve_device(device)), cfg, ck
 
 
-def truncate_log_to(path: Path, upto_env_steps: int) -> int:
-    """Drop every row after ``upto_env_steps`` from a training log and return how many were dropped.
-    Used on resume: rows written after the last checkpoint belong to the interrupted segment, which is
-    regenerated, so keeping them would duplicate rows and make the log go backwards."""
+def _backup_path(path: Path) -> Path:
+    """First unused ``<log>.partial-tail.bak[.N]`` next to the log (an earlier backup is never overwritten)."""
+    cand, i = path.with_name(path.name + ".partial-tail.bak"), 1
+    while cand.exists():
+        i += 1
+        cand = path.with_name(f"{path.name}.partial-tail.bak.{i}")
+    return cand
+
+
+def truncate_log_to(path: Path, upto_env_steps: int) -> tuple[int, int]:
+    """Prepare a training log for resuming at ``upto_env_steps``; returns ``(dropped, partial)``.
+
+    * ``dropped``: complete rows after ``upto_env_steps``.  They belong to the interrupted segment, which is
+      regenerated, so keeping them would duplicate rows and make the log go backwards.
+    * ``partial``: 1 if the LAST line was an unfinished write (a process killed mid-``write``), else 0.  The
+      original log is copied to ``<log>.partial-tail.bak`` first, then that line is discarded.
+    * An unreadable line anywhere else is not an interrupted write: ``ValueError`` naming the line number,
+      and the log is left untouched."""
     if not path.exists():
-        return 0
-    kept, dropped = [], 0
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        if json.loads(line).get("env_steps", 0) <= upto_env_steps:
-            kept.append(line)
+        return 0, 0
+    lines = [(n, line) for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1) if line.strip()]
+    rows, partial = [], 0
+    for i, (n, line) in enumerate(lines):
+        try:
+            row = json.loads(line)
+            if not isinstance(row, dict):
+                raise ValueError("not a JSON object")
+        except ValueError as e:  # json.JSONDecodeError is a ValueError
+            if i < len(lines) - 1:
+                raise ValueError(f"{path.name}: line {n} is not valid JSON ({e}) and it is not the last line, so this is "
+                                 f"not an interrupted write; refusing to repair the log automatically") from e
+            partial = 1
         else:
-            dropped += 1
+            rows.append((line, row))
+    kept = [line for line, row in rows if row.get("env_steps", 0) <= upto_env_steps]
+    if partial:
+        shutil.copy2(path, _backup_path(path))
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text("".join(x + "\n" for x in kept), encoding="utf-8")
     os.replace(tmp, path)
-    return dropped
+    return len(rows) - len(kept), partial
 
 
 def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop_after: int | None = None) -> dict:
@@ -182,14 +206,14 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
                 episode_k += 1
                 obs[i] = observe(e)
             resumed = True
-            dropped_rows = truncate_log_to(out_dir / "train_log.jsonl", env_steps)
+            dropped_rows, partial_rows = truncate_log_to(out_dir / "train_log.jsonl", env_steps)
             log(f"[resume] continuing from env_steps={env_steps} updates={updates}")
         else:
             log("[resume] saved state does not match this config; starting from scratch")
     train_log = open(out_dir / "train_log.jsonl", "a" if resumed else "w")
     if resumed:  # explicit marker so a reader of the log can see where the run was interrupted
         train_log.write(json.dumps({"type": "resume", "env_steps": env_steps, "updates": updates,
-                                    "dropped_rows": dropped_rows}) + "\n")
+                                    "dropped_rows": dropped_rows, "partial_rows": partial_rows}) + "\n")
         train_log.flush()
     recent_scores, recent_rets, recent_deaths, losses = [], [], [], []
     t0 = time.time() - minutes0 * 60
