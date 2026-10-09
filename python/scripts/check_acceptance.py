@@ -4,13 +4,20 @@
 Prints one row per gate: PASS / FAIL / REPORTED / MISSING.  Exit code 1 if any MUST gate is
 FAIL or MISSING.  Thresholds are fixed by the plan and must not be edited to fit results.
 
-  python python/scripts/check_acceptance.py [--run-tests]
+  python python/scripts/check_acceptance.py [--run-tests] [--json PATH]
+
+``run_checks()`` returns the gates as structured rows ``{"id", "level", "status", "detail", "data"}``;
+``data`` carries the machine-readable facts (e.g. S1 ``non_inferiority_shown``, S4 ``monotone``) so that
+callers such as make_report.py never have to parse the human-readable ``detail`` text.  ``--json PATH``
+writes the same rows to a file.
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
 
@@ -19,8 +26,8 @@ import acceptance_lib as L
 rows = []  # (id, level, status, detail)
 
 
-def add(gid, level, status, detail):
-    rows.append((gid, level, status, detail))
+def add(gid, level, status, detail, **data):
+    rows.append({"id": gid, "level": level, "status": status, "detail": detail, "data": data})
 
 
 def fmt_paired(label, a, b):
@@ -59,7 +66,8 @@ def check_m2():
     return ("PASS" if ok else "FAIL"), f"each evaluated twice on {M2_SEEDS} validation seeds (cpu): " + "; ".join(parts)
 
 
-def main(run_tests: bool):
+def run_checks(run_tests: bool) -> list[dict]:
+    rows.clear()
     # ---- M1 / M2 (tests) ---------------------------------------------------------------
     if run_tests:
         r = subprocess.run([sys.executable, "-m", "pytest", "-q", str(L.ROOT / "python" / "tests")],
@@ -92,7 +100,8 @@ def main(run_tests: bool):
         per_seed = [float(L.per_episode(L.run_eval(n), "score").mean()) for n in names]
         ok = lo > 0 and dlo > 0 and all(x > leg.mean() for x in per_seed)
         add("M4", "MUST", "PASS" if ok else "FAIL",
-            f"final arch={arch} (chosen on val). {txt}; {txt2}; per-seed means {[round(x, 1) for x in per_seed]} vs legacy {leg.mean():.1f}")
+            f"final arch={arch} (chosen on val). {txt}; {txt2}; per-seed means {[round(x, 1) for x in per_seed]} vs legacy {leg.mean():.1f}",
+            final_arch=arch)
     else:
         add("M4", "MUST", "MISSING", "needs depth-group runs + legacy baseline")
 
@@ -126,7 +135,8 @@ def main(run_tests: bool):
         bound = -0.03 * safe.mean()
         add("S1", "SHOULD", "PASS" if rel >= -0.03 else "FAIL",
             f"{txt}; relative {rel * 100:+.1f}% (pre-set point-estimate target >= -3%; this is not a non-inferiority test: "
-            f"CI lower bound {lo_s:+.1f} vs the -3% bound {bound:+.1f}, non-inferiority shown: {lo_s >= bound})")
+            f"CI lower bound {lo_s:+.1f} vs the -3% bound {bound:+.1f}, non-inferiority shown: {lo_s >= bound})",
+            relative_diff=float(rel), ci_lower=float(lo_s), bound=float(bound), non_inferiority_shown=bool(lo_s >= bound))
     else:
         add("S1", "SHOULD", "MISSING", "needs deep + safe-heuristic")
 
@@ -151,17 +161,30 @@ def main(run_tests: bool):
         means = {a: float(v.mean()) for a, v in trend.items()}
         mono = means["cnn2"] <= means["res2"] <= means["res4"] <= means["res8"]
         add("S4", "SHOULD", "REPORTED", f"test score by depth {{{', '.join(f'{k}: {v:.1f}' for k, v in means.items())}}}; "
-            f"monotone in depth: {mono}")
+            f"monotone in depth: {mono}", means=means, monotone=bool(mono))
     else:
         add("S4", "SHOULD", "MISSING", "needs depth group")
 
-    # ---- print -------------------------------------------------------------------------
-    w = max(len(r[3]) for r in rows)
-    for gid, level, status, detail in rows:
-        print(f"{gid:3s} {level:6s} {status:9s} {detail}")
-    bad = [r for r in rows if r[1] == "MUST" and r[2] in ("FAIL", "MISSING")]
-    print("\nMUST gates:", "ALL PASS" if not bad else f"{len(bad)} not satisfied: {[r[0] for r in bad]}")
-    return 1 if bad else 0
+    return list(rows)
+
+
+def exit_code(result: list[dict]) -> int:
+    return 1 if any(r["level"] == "MUST" and r["status"] in ("FAIL", "MISSING") for r in result) else 0
+
+
+def render(result: list[dict]) -> str:
+    out = [f"{r['id']:3s} {r['level']:6s} {r['status']:9s} {r['detail']}" for r in result]
+    bad = [r for r in result if r["level"] == "MUST" and r["status"] in ("FAIL", "MISSING")]
+    out.append("\nMUST gates: " + ("ALL PASS" if not bad else f"{len(bad)} not satisfied: {[r['id'] for r in bad]}"))
+    return "\n".join(out)
+
+
+def main(argv: list[str]) -> int:
+    result = run_checks("--run-tests" in argv)
+    print(render(result))
+    if "--json" in argv:
+        Path(argv[argv.index("--json") + 1]).write_text(json.dumps(result, indent=1, default=str), encoding="utf-8")
+    return exit_code(result)
 
 
 def base_hard_ok():
@@ -169,4 +192,4 @@ def base_hard_ok():
 
 
 if __name__ == "__main__":
-    sys.exit(main("--run-tests" in sys.argv))
+    sys.exit(main(sys.argv[1:]))

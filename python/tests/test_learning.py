@@ -431,6 +431,28 @@ def test_m2_check_fails_when_the_evaluation_is_perturbed(monkeypatch):
     assert status == "FAIL" and "DIFFERENT" in detail and "identical" not in detail, (status, detail)
 
 
+def test_acceptance_result_is_structured_and_report_text_does_not_parse_it(monkeypatch):
+    _need_committed_results()
+    chk = _load_script("check_acceptance", monkeypatch)
+    monkeypatch.setattr(chk, "check_m2", lambda: ("PASS", "stub"))  # M2 has its own tests above
+    rows = chk.run_checks(False)
+    by_id = {r["id"]: r for r in rows}
+    assert all(set(r) == {"id", "level", "status", "detail", "data"} for r in rows)
+    assert isinstance(by_id["S1"]["data"]["non_inferiority_shown"], bool) and isinstance(by_id["S4"]["data"]["monotone"], bool)
+    assert by_id["M1"]["status"] == "MISSING" and chk.exit_code(rows) == 1  # tests were not run: a MUST gate is open
+    assert "MUST gates:" in chk.render(rows)
+    # make_report decides from the fields, not from wording: nonsense detail text, same text out
+    rep = _load_script("make_report", monkeypatch)
+
+    def text(s1, mono):
+        return rep.limitations({"S1": {"status": s1[0], "detail": "???", "data": {"non_inferiority_shown": s1[1]}},
+                                "S4": {"status": "REPORTED", "detail": "???", "data": {"monotone": mono}}})
+
+    assert "非劣性成立" in text(("PASS", True), True) and "深度单调有益" in text(("PASS", True), True)
+    assert "并未建立" in text(("PASS", False), False) and "深度并不单调有益" in text(("PASS", False), False)
+    assert "S1 未达成" in text(("FAIL", False), False)
+
+
 def test_timing_is_stripped_from_the_pytest_summary(monkeypatch):
     lib = _load_script("acceptance_lib", monkeypatch)
     assert lib.strip_timing("46 passed, 1 skipped in 20.31s") == "46 passed, 1 skipped"

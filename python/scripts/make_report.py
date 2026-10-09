@@ -10,6 +10,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -174,8 +175,9 @@ def curves():
     plt.close(fig)
 
 
-def limitations(acc_text: str) -> str:
-    """Section 8 text, derived from the data of THIS results directory (no claim is hard-coded)."""
+def limitations(acc: dict) -> str:
+    """Section 8 text, derived from the data of THIS results directory (no claim is hard-coded).
+    ``acc`` maps gate id -> structured row from check_acceptance.run_checks(); no printed text is parsed."""
     is_gpu = bool(os.environ.get("PACMAN_RESULTS_DIR"))
     conv = ("cnn2", "res2", "res4", "res8")
     mean_of = lambda arch: float(L.seed_avg(L.run_names(arch), "standard", "score").mean())  # noqa: E731
@@ -185,8 +187,9 @@ def limitations(acc_text: str) -> str:
     above = [LABEL[a].split(" ", 1)[1] for a in conv if means[a] > leg]
     steps = (L.load(L.RUNS / "res4_s0" / "config.json") or {}).get("total_env_steps", "?")
     out = []
-    if "S1  SHOULD PASS" in acc_text:
-        if "shown: True" in acc_text:
+    s1 = acc.get("S1", {})
+    if s1.get("status") == "PASS":
+        if s1.get("data", {}).get("non_inferiority_shown"):
             out.append("- **S1 达成,且在该置信区间下非劣性成立**;但这个区间只反映测试局的抽样波动,不含训练种子间方差,而且 MLP 并不比启发式好。")
         else:
             out.append("- **S1 按预设的点估计门槛通过,但等价/非劣性并未建立**:均值差在 -3% 之内、差异不显著(第 7 节配对置信区间跨零),可是区间下界低于 -3% 的界限;该区间还不含训练种子间方差。这不等于\"与启发式相当\",MLP 并不比它好。")
@@ -195,7 +198,7 @@ def limitations(acc_text: str) -> str:
     below = [a for a in conv if means[a] < mlp]
     conv_txt = "所有卷积网络的平均得分都明显低于 MLP" if len(below) == len(conv) else "部分卷积网络接近或超过 MLP(见第 3 节)"
     leg_txt = ("平均得分高于 `legacy` 的卷积网络只有:" + "、".join(above) + "(差距是否显著看第 3 节置信区间)") if above else "没有任何卷积网络的平均得分超过 `legacy`"
-    mono = "monotone in depth: True" in acc_text
+    mono = bool(acc.get("S4", {}).get("data", {}).get("monotone"))
     out.append(f"- **卷积网络**:{conv_txt};{leg_txt}。深度{'单调' if mono else '并不单调'}有益(S4)。\"深度无收益\"的结论只对本报告的训练预算({steps} 环境步/运行)和这一套超参成立;是否已充分训练**没有做收敛检验**(第 6 节曲线仅供参考)。")
     d = L.seed_avg(L.run_names("res4"), "standard", "score")
     v = L.seed_avg([f"res4-nstep1_s{s}" for s in L.SEEDS], "standard", "score")
@@ -220,8 +223,10 @@ def limitations(acc_text: str) -> str:
 
 
 def main():
-    acc = subprocess.run([sys.executable, str(Path(__file__).with_name("check_acceptance.py")), "--run-tests"],
+    acc_json = Path(tempfile.mkdtemp()) / "acceptance.json"
+    acc = subprocess.run([sys.executable, str(Path(__file__).with_name("check_acceptance.py")), "--run-tests", "--json", str(acc_json)],
                          capture_output=True, text=True, cwd=L.ROOT / "python", env={**os.environ, "PYTHONPATH": str(L.ROOT / "python")})
+    acc_rows = {r["id"]: r for r in json.loads(acc_json.read_text(encoding="utf-8"))}
     try:
         curves()
         pre = "figures" if os.environ.get("PACMAN_RESULTS_DIR") else "../results/figures"  # relative to where OUT lives
@@ -276,7 +281,7 @@ def main():
 ```
 
 ## 8. 未达成项与局限(文字由数据决定;数字见上表)
-{limitations(acc.stdout)}
+{limitations(acc_rows)}
 """
     OUT.write_text(md, encoding="utf-8")
     print(f"wrote {OUT.relative_to(L.ROOT) if OUT.is_relative_to(L.ROOT) else OUT.name}")
