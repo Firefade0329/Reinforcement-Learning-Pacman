@@ -1,0 +1,24 @@
+training res4-nodouble_s0 -> <repo>\results_gpu\runs\res4-nodouble_s0
+TrainConfig(arch='res4', obs='fields', width=16, double=False, dueling=True, n_step=3, gamma=0.99, lr=0.0005, batch=32, buffer=100000, learn_start=4000, n_envs=8, steps_per_update=4, total_env_steps=300000, tau=0.01, eps_start=1.0, eps_end=0.05, eps_frac=0.4, grad_clip=10.0, eval_every=20000, seed=0, threads=1, device='cuda')
+[val] steps=20000 updates=3998 val_score=21.8 death=1.00 win=0.00 (2.9 min)
+[val] steps=40000 updates=8998 val_score=34.7 death=1.00 win=0.00 (6.3 min)
+[val] steps=60000 updates=13998 val_score=41.0 death=1.00 win=0.00 (9.7 min)
+[val] steps=80000 updates=18998 val_score=65.1 death=1.00 win=0.00 (13.2 min)
+[val] steps=100000 updates=23998 val_score=74.6 death=1.00 win=0.00 (16.8 min)
+[val] steps=120000 updates=28998 val_score=112.7 death=1.00 win=0.00 (20.3 min)
+[val] steps=140000 updates=33998 val_score=143.5 death=0.98 win=0.00 (24.0 min)
+[val] steps=160000 updates=38998 val_score=143.4 death=1.00 win=0.00 (27.6 min)
+[val] steps=180000 updates=43998 val_score=108.3 death=1.00 win=0.00 (31.1 min)
+training res4-nodouble_s0 -> <repo>\results_gpu\runs\res4-nodouble_s0
+TrainConfig(arch='res4', obs='fields', width=16, double=False, dueling=True, n_step=3, gamma=0.99, lr=0.0005, batch=32, buffer=100000, learn_start=4000, n_envs=8, steps_per_update=4, total_env_steps=300000, tau=0.01, eps_start=1.0, eps_end=0.05, eps_frac=0.4, grad_clip=10.0, eval_every=20000, seed=0, threads=1, device='cuda')
+[resume] continuing from env_steps=180000 updates=43998
+[val] steps=200000 updates=48998 val_score=72.5 death=1.00 win=0.00 (34.6 min)
+[val] steps=220000 updates=53998 val_score=91.6 death=1.00 win=0.00 (38.1 min)
+[val] steps=240000 updates=58998 val_score=113.0 death=1.00 win=0.00 (41.7 min)
+[val] steps=260000 updates=63998 val_score=155.0 death=1.00 win=0.00 (45.3 min)
+[val] steps=280000 updates=68998 val_score=121.8 death=1.00 win=0.00 (48.9 min)
+[val] steps=300000 updates=73998 val_score=142.7 death=1.00 win=0.00 (52.5 min)
+[final] steps=300000 updates=73998 val_score=142.7 death=1.00 win=0.00 (52.8 min)
+{"best_val_score": 155.02, "best_env_steps": 260000, "updates": 73998, "minutes": 52.761408166090646}
+res4-nodouble_s0 standard/test: score 157.8 [148.9, 167.1]  death 1.00  win 0.00  steps 239
+res4-nodouble_s0 hard/test: score 68.4 [62.9, 74.1]  death 1.00  win 0.00  steps 78

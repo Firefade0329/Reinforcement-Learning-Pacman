@@ -1,0 +1,12 @@
+﻿M1  MUST   FAIL      1 error in 3.21s
+M3  MUST   PASS      baselines random/greedy-bfs/legacy/safe-heuristic + tabular x3 seeds present
+M4  MUST   PASS      final arch=mlp (chosen on val). score: diff +110.0 [95% CI +95.8, +123.9]; death (legacy - deep): diff +0.3 [95% CI +0.2, +0.3]; per-seed means [266.3, 252.6, 271.2] vs legacy 153.4
+M5  MUST   PASS      score vs tabular: diff +183.0 [95% CI +173.4, +192.7]
+M6  MUST   PASS      33 runs complete (>=3 seeds per cell)
+M7  MUST   PASS      no changes to Java sources / images / Q-table since base commit
+S1  SHOULD PASS      deep vs safe-heuristic: diff -4.8 [95% CI -19.7, +10.5]; relative -1.8% (target >= -3%)
+S2  SHOULD PASS      res2 vs cnn2: diff +34.2 [95% CI +26.7, +41.6]
+S3  SHOULD PASS      hard: deep vs legacy: diff +40.9 [95% CI +35.7, +46.2]
+S4  SHOULD REPORTED  test score by depth {cnn2: 125.5, res2: 159.7, res4: 160.9, res8: 127.9}; monotone in depth: False
+
+MUST gates: 1 not satisfied: ['M1']

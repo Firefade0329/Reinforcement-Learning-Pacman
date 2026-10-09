@@ -1,0 +1,21 @@
+training res4_s1 -> <repo>\python\..\results_gpu\runs\res4_s1
+TrainConfig(arch='res4', obs='fields', width=16, double=True, dueling=True, n_step=3, gamma=0.99, lr=0.0005, batch=32, buffer=100000, learn_start=4000, n_envs=8, steps_per_update=4, total_env_steps=300000, tau=0.01, eps_start=1.0, eps_end=0.05, eps_frac=0.4, grad_clip=10.0, eval_every=20000, seed=1, threads=1, device='cuda')
+[val] steps=20000 updates=3998 val_score=14.4 death=1.00 win=0.00 (3.3 min)
+[val] steps=40000 updates=8998 val_score=22.5 death=1.00 win=0.00 (7.2 min)
+[val] steps=60000 updates=13998 val_score=42.9 death=1.00 win=0.00 (11.2 min)
+[val] steps=80000 updates=18998 val_score=51.3 death=1.00 win=0.00 (15.2 min)
+[val] steps=100000 updates=23998 val_score=64.9 death=1.00 win=0.00 (19.3 min)
+[val] steps=120000 updates=28998 val_score=84.8 death=1.00 win=0.00 (23.4 min)
+[val] steps=140000 updates=33998 val_score=77.1 death=1.00 win=0.00 (27.5 min)
+[val] steps=160000 updates=38998 val_score=111.7 death=1.00 win=0.00 (31.7 min)
+[val] steps=180000 updates=43998 val_score=136.0 death=1.00 win=0.00 (35.8 min)
+[val] steps=200000 updates=48998 val_score=115.5 death=1.00 win=0.00 (39.9 min)
+[val] steps=220000 updates=53998 val_score=95.9 death=1.00 win=0.00 (44.0 min)
+[val] steps=240000 updates=58998 val_score=78.2 death=1.00 win=0.00 (48.0 min)
+[val] steps=260000 updates=63998 val_score=64.1 death=1.00 win=0.00 (52.0 min)
+[val] steps=280000 updates=68998 val_score=94.9 death=1.00 win=0.00 (56.1 min)
+[val] steps=300000 updates=73998 val_score=147.6 death=1.00 win=0.00 (60.3 min)
+[final] steps=300000 updates=73998 val_score=147.6 death=1.00 win=0.00 (60.6 min)
+{"best_val_score": 147.56, "best_env_steps": 300000, "updates": 73998, "minutes": 60.56449955701828}
+res4_s1 standard/test: score 149.0 [139.8, 158.4]  death 1.00  win 0.00  steps 231
+res4_s1 hard/test: score 74.8 [68.5, 81.1]  death 1.00  win 0.00  steps 86

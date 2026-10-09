@@ -1,0 +1,24 @@
+training mlp_s2 -> <repo>\python\..\results_gpu\runs\mlp_s2
+TrainConfig(arch='mlp', obs='fields', width=16, double=True, dueling=True, n_step=3, gamma=0.99, lr=0.0005, batch=32, buffer=100000, learn_start=4000, n_envs=8, steps_per_update=4, total_env_steps=300000, tau=0.01, eps_start=1.0, eps_end=0.05, eps_frac=0.4, grad_clip=10.0, eval_every=20000, seed=2, threads=1, device='cpu')
+[val] steps=20000 updates=3998 val_score=62.1 death=1.00 win=0.00 (0.2 min)
+[val] steps=40000 updates=8998 val_score=78.6 death=1.00 win=0.00 (0.3 min)
+training mlp_s2 -> <repo>\python\..\results_gpu\runs\mlp_s2
+TrainConfig(arch='mlp', obs='fields', width=16, double=True, dueling=True, n_step=3, gamma=0.99, lr=0.0005, batch=32, buffer=100000, learn_start=4000, n_envs=8, steps_per_update=4, total_env_steps=300000, tau=0.01, eps_start=1.0, eps_end=0.05, eps_frac=0.4, grad_clip=10.0, eval_every=20000, seed=2, threads=1, device='cpu')
+[resume] continuing from env_steps=40000 updates=8998
+[val] steps=60000 updates=13998 val_score=103.4 death=1.00 win=0.00 (0.6 min)
+[val] steps=80000 updates=18998 val_score=140.1 death=0.98 win=0.02 (0.8 min)
+[val] steps=100000 updates=23998 val_score=189.7 death=0.90 win=0.10 (1.0 min)
+[val] steps=120000 updates=28998 val_score=210.5 death=0.86 win=0.14 (1.2 min)
+[val] steps=140000 updates=33998 val_score=241.6 death=0.78 win=0.22 (1.4 min)
+[val] steps=160000 updates=38998 val_score=254.8 death=0.70 win=0.30 (1.6 min)
+[val] steps=180000 updates=43998 val_score=79.6 death=0.94 win=0.00 (1.9 min)
+[val] steps=200000 updates=48998 val_score=254.5 death=0.68 win=0.32 (2.1 min)
+[val] steps=220000 updates=53998 val_score=249.1 death=0.76 win=0.24 (2.4 min)
+[val] steps=240000 updates=58998 val_score=259.4 death=0.64 win=0.36 (2.6 min)
+[val] steps=260000 updates=63998 val_score=227.5 death=0.92 win=0.08 (2.9 min)
+[val] steps=280000 updates=68998 val_score=272.8 death=0.90 win=0.10 (3.1 min)
+[val] steps=300000 updates=73998 val_score=278.3 death=0.64 win=0.36 (3.4 min)
+[final] steps=300000 updates=73998 val_score=278.3 death=0.64 win=0.36 (3.4 min)
+{"best_val_score": 278.26, "best_env_steps": 300000, "updates": 73998, "minutes": 3.4437682191530863}
+mlp_s2 standard/test: score 271.2 [257.7, 285.1]  death 0.72  win 0.27  steps 417
+mlp_s2 hard/test: score 88.9 [80.9, 97.2]  death 1.00  win 0.00  steps 113

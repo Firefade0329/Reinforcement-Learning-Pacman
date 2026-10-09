@@ -1,0 +1,70 @@
+device: cuda (NVIDIA RTX A1000 6GB Laptop GPU)
+mlp   batch 32:     2.2 ms/update
+cnn2  batch 32:     1.5 ms/update
+res2  batch 32:     3.3 ms/update
+res4  batch 32:     4.9 ms/update
+res8  batch 32:     8.3 ms/update
+random          standard/val: score 8.3 [6.8, 9.9]  death 1.00  win 0.00  steps 42
+random          standard/test: score 7.5 [6.9, 8.1]  death 1.00  win 0.00  steps 41
+random          hard/val: score 4.9 [4.2, 5.6]  death 1.00  win 0.00  steps 21
+random          hard/test: score 4.3 [4.0, 4.6]  death 1.00  win 0.00  steps 18
+greedy-bfs      standard/val: score 63.3 [49.1, 79.1]  death 1.00  win 0.00  steps 68
+greedy-bfs      standard/test: score 60.3 [55.0, 65.8]  death 1.00  win 0.00  steps 64
+greedy-bfs      hard/val: score 33.5 [27.4, 39.7]  death 1.00  win 0.00  steps 35
+greedy-bfs      hard/test: score 31.1 [28.5, 33.7]  death 1.00  win 0.00  steps 32
+legacy          standard/val: score 149.6 [126.4, 174.5]  death 0.98  win 0.02  steps 233
+legacy          standard/test: score 153.4 [141.7, 165.7]  death 0.95  win 0.05  steps 247
+legacy          hard/val: score 44.6 [38.3, 51.0]  death 1.00  win 0.00  steps 60
+legacy          hard/test: score 42.2 [39.5, 45.0]  death 1.00  win 0.00  steps 60
+safe-heuristic  standard/val: score 276.9 [245.3, 306.7]  death 0.74  win 0.24  steps 455
+safe-heuristic  standard/test: score 268.2 [254.7, 281.1]  death 0.81  win 0.17  steps 448
+safe-heuristic  hard/val: score 93.7 [77.3, 110.5]  death 1.00  win 0.00  steps 117
+safe-heuristic  hard/test: score 85.9 [78.8, 93.1]  death 1.00  win 0.00  steps 106
+resume mlp_s1resume mlp_s0
+
+done mlp_s1
+resume mlp_s2
+done mlp_s0
+start res8_s0
+done mlp_s2
+start res8_s1
+done res8_s0
+start res8_s2
+done res8_s1
+start res4_s0
+done res4_s0
+start res4_s1
+done res8_s2
+start res4_s2
+done res4_s1
+start res2_s0
+done res4_s2
+start res2_s1
+done res2_s0
+start res2_s2
+done res2_s1
+start cnn2_s0
+done res2_s2
+start cnn2_s1
+done cnn2_s0
+start cnn2_s2
+done cnn2_s1
+done cnn2_s2
+start mlp-nodouble_s0
+done mlp-nodouble_s0
+start mlp-nodouble_s1
+done mlp-nodouble_s1
+start mlp-nodouble_s2
+done mlp-nodouble_s2
+start mlp-nodueling_s0
+done mlp-nodueling_s0
+start mlp-nodueling_s1
+done mlp-nodueling_s1
+start mlp-nodueling_s2
+done mlp-nodueling_s2
+start mlp-nstep1_s0
+done mlp-nstep1_s0
+start mlp-nstep1_s1
+done mlp-nstep1_s1
+start mlp-nstep1_s2
+done mlp-nstep1_s2

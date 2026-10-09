@@ -1,0 +1,20 @@
+resume res4-nodouble_s0
+done res4-nodouble_s0
+resume res4-nodouble_s1
+done res4-nodouble_s1
+start res4-nodouble_s2
+done res4-nodouble_s2
+start res4-nodueling_s0
+done res4-nodueling_s0
+skip res4-nodueling_s1 (running elsewhere; remove <repo>\results_gpu\runs\res4-nodueling_s1\.lock if stale)
+start res4-nodueling_s2
+done res4-nodueling_s2
+skip res4-nstep1_s0 (running elsewhere; remove <repo>\results_gpu\runs\res4-nstep1_s0\.lock if stale)
+start res4-nstep1_s1
+done res4-nstep1_s1
+skip res4-nstep1_s2 (running elsewhere; remove <repo>\results_gpu\runs\res4-nstep1_s2\.lock if stale)
+start res4raw_s0
+done res4raw_s0
+skip res4raw_s1 (running elsewhere; remove <repo>\results_gpu\runs\res4raw_s1\.lock if stale)
+start res4raw_s2
+done res4raw_s2
