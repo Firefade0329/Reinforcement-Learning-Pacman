@@ -199,7 +199,7 @@ def test_smoke_driver_reports_throughput_memory_hash_pairs_and_resume(tmp_path):
     assert {v["outcome"] for v in rep["runs"].values()} == {"done"}
     assert rep["initial_hash_pairs_equal"] == {"cnn2_s900": True}
     for v in rep["runs"].values():
-        assert v["env_steps"] == 1200 and v["updates"] > 0 and v["env_steps_per_second"] > 0 and v["peak_working_set_mb"] > 0
+        assert v["env_steps"] == 1200 and v["updates"] > 0 and v["env_steps_per_second"] > 0 and v["peak_working_set_mb"] > 0 and v["peak_memory_error"] is None and (sys.platform != "win32" or v["peak_commit_mb"] > 0)
         assert v["cpu_eval_10_episodes"]["last"]["n_records"] == 10 and v["cpu_eval_10_episodes"]["best"]["n_records"] == 10
     assert rep["interrupt_resume_check"]["ok"] is True
     text = (tmp_path / "smoke_report.json").read_text()

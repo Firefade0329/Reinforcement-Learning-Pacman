@@ -240,7 +240,7 @@ def smoke(profile: str, device: str, results: Path, steps=None, pairs=None, work
             done = json.loads((run_dir / "run_complete.json").read_text())
             s = done["summary"]
             entry.update({k: s.get(k) for k in ("minutes", "updates", "env_steps", "replay_size", "episodes_started", "best_val_score", "best_env_steps",
-                                                 "weights_finite", "nonfinite_loss_updates_this_session", "peak_working_set_mb", "peak_commit_mb",
+                                                 "weights_finite", "nonfinite_loss_updates_this_session", "peak_working_set_mb", "peak_commit_mb", "peak_memory_error",
                                                  "cuda_max_allocated_mb", "cuda_max_reserved_mb")})
             entry["env_steps_per_second"] = round(s["env_steps"] / (s["minutes"] * 60), 1) if s.get("minutes") else None
             entry["init_online_hash"] = done["init_online_hash"]

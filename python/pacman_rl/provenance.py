@@ -83,36 +83,64 @@ def code_version(root: Path | None = None, extra_files: dict[str, str] | None = 
             "python_tree_sha256": h.hexdigest() if tracked else None, "files": files}
 
 
+def _windows_apis():
+    """(ctypes, wintypes, kernel32, psapi) as private WinDLL instances.  ``ctypes.windll`` is a process-wide cache whose
+    functions would get our argtypes/restype assignments imposed on every other user of the same DLL; WinDLL is private."""
+    import ctypes
+    from ctypes import wintypes
+
+    return ctypes, wintypes, ctypes.WinDLL("kernel32", use_last_error=True), ctypes.WinDLL("psapi", use_last_error=True)
+
+
+def _windows_peak(apis) -> dict:
+    """Peak working set and peak commit of this process in MB via GetProcessMemoryInfo.
+
+    GetCurrentProcess returns the pseudo-handle (HANDLE)-1, which a 64-bit ``c_void_p`` result reads as 18446744073709551615.
+    Passed to a ctypes function without declared ``argtypes`` that value is converted as a plain C integer and overflows
+    (``OverflowError: int too long to convert``), so BOTH functions get explicit signatures before they are called."""
+    ctypes, wintypes, k32, psapi = apis
+
+    class PMC(ctypes.Structure):
+        _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD), ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t), ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t), ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t), ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t)]
+
+    k32.GetCurrentProcess.argtypes = []
+    k32.GetCurrentProcess.restype = wintypes.HANDLE
+    psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(PMC), wintypes.DWORD]
+    psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+    pmc = PMC()
+    pmc.cb = ctypes.sizeof(PMC)
+    if not psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb):
+        raise OSError(f"GetProcessMemoryInfo returned FALSE (last error {getattr(ctypes, 'get_last_error', lambda: 'n/a')()})")
+    return {"peak_working_set_mb": round(pmc.PeakWorkingSetSize / 2**20, 1), "peak_commit_mb": round(pmc.PeakPagefileUsage / 2**20, 1)}
+
+
+def _posix_peak() -> dict:
+    import resource
+
+    r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss  # KB on Linux, bytes on macOS
+    return {"peak_working_set_mb": round(r / (1024 * 1024 if platform.system() == "Darwin" else 1024), 1), "peak_commit_mb": None}
+
+
 def peak_memory(device=None) -> dict:
-    """Best-effort peak memory of this process in MB (working set; Windows also peak commit) and the CUDA allocator peaks."""
-    out = {"peak_working_set_mb": None, "peak_commit_mb": None, "cuda_max_allocated_mb": None, "cuda_max_reserved_mb": None}
+    """Peak memory of this process in MB (working set; Windows also peak commit) and the CUDA allocator peaks.
+
+    A failure is never silent: whatever could not be measured stays ``None`` and ``peak_memory_error`` says why
+    (``None`` when everything that applies to this platform/device was measured)."""
+    out = {"peak_working_set_mb": None, "peak_commit_mb": None, "cuda_max_allocated_mb": None, "cuda_max_reserved_mb": None, "peak_memory_error": None}
+    errors = []
     try:
-        import resource  # POSIX
-
-        r = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        out["peak_working_set_mb"] = round(r / (1024 * 1024 if platform.system() == "Darwin" else 1024), 1)
-    except ImportError:
-        try:  # Windows
-            import ctypes
-            from ctypes import wintypes
-
-            class PMC(ctypes.Structure):
-                _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD), ("PeakWorkingSetSize", ctypes.c_size_t),
-                            ("WorkingSetSize", ctypes.c_size_t), ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-                            ("QuotaPagedPoolUsage", ctypes.c_size_t), ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-                            ("QuotaNonPagedPoolUsage", ctypes.c_size_t), ("PagefileUsage", ctypes.c_size_t),
-                            ("PeakPagefileUsage", ctypes.c_size_t)]
-
-            pmc = PMC()
-            pmc.cb = ctypes.sizeof(PMC)
-            k32, psapi = ctypes.windll.kernel32, ctypes.windll.psapi
-            k32.GetCurrentProcess.restype = wintypes.HANDLE
-            if psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb):
-                out["peak_working_set_mb"] = round(pmc.PeakWorkingSetSize / 2**20, 1)
-                out["peak_commit_mb"] = round(pmc.PeakPagefileUsage / 2**20, 1)
-        except Exception:  # noqa: BLE001
-            pass
+        out.update(_windows_peak(_windows_apis()) if platform.system() == "Windows" else _posix_peak())
+    except Exception as e:  # noqa: BLE001 - reported below, not swallowed
+        errors.append(f"process memory: {type(e).__name__}: {e}")
     if device is not None and torch.device(device).type == "cuda":
-        out["cuda_max_allocated_mb"] = round(torch.cuda.max_memory_allocated(device) / 2**20, 1)
-        out["cuda_max_reserved_mb"] = round(torch.cuda.max_memory_reserved(device) / 2**20, 1)
+        try:
+            out["cuda_max_allocated_mb"] = round(torch.cuda.max_memory_allocated(device) / 2**20, 1)
+            out["cuda_max_reserved_mb"] = round(torch.cuda.max_memory_reserved(device) / 2**20, 1)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"cuda memory: {type(e).__name__}: {e}")
+    out["peak_memory_error"] = "; ".join(errors) or None
     return out

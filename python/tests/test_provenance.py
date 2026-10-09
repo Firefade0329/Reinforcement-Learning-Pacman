@@ -7,6 +7,7 @@ import os
 import platform
 import socket
 import subprocess
+import sys
 import textwrap
 from dataclasses import asdict
 from pathlib import Path
@@ -208,3 +209,103 @@ def test_replay_size_differs_by_at_most_the_unflushed_tail_between_n1_and_n3(tmp
     for n in (1, 3):
         sizes[n] = train(tiny(n_step=n), tmp_path / f"n{n}", log=lambda *_: None)["replay_size"]
     assert 0 <= sizes[1] - sizes[3] <= 2 * 4
+
+
+# ------------------------------------------------------------------ peak memory (Windows pseudo-handle regression)
+class _Fn:
+    """Stand-in for a ctypes foreign function.  Like the real thing on 64-bit Windows, a function whose ``argtypes`` were never
+    declared converts Python ints to a plain C int and overflows on the 64-bit pseudo-handle; declared ``argtypes`` pass it on."""
+
+    def __init__(self, impl):
+        self.impl, self.argtypes, self.restype = impl, None, None
+
+    def __call__(self, *args):
+        if self.argtypes is None:
+            for a in args:
+                if isinstance(a, int) and not -(2**31) <= a < 2**31:
+                    raise OverflowError("int too long to convert")
+        else:
+            assert len(args) == len(self.argtypes)
+        return self.impl(*args)
+
+
+def _fake_windows(ws_mb=321, commit_mb=654, ok=True):
+    import ctypes
+    from ctypes import wintypes
+
+    k32, psapi = type("Kernel32", (), {})(), type("Psapi", (), {})()
+    k32.GetCurrentProcess = _Fn(lambda: 2**64 - 1 if k32.GetCurrentProcess.restype is wintypes.HANDLE else -1)  # (HANDLE)-1 read as c_void_p
+
+    def info(handle, ref, cb):
+        if ok:
+            ref._obj.PeakWorkingSetSize, ref._obj.PeakPagefileUsage = ws_mb * 2**20, commit_mb * 2**20
+        return 1 if ok else 0
+
+    psapi.GetProcessMemoryInfo = _Fn(info)
+    return ctypes, wintypes, k32, psapi
+
+
+def _legacy_windows_peak(apis):
+    """The statements of the implementation before the fix, verbatim: restype set, argtypes NOT declared."""
+    ctypes, wintypes, k32, psapi = apis
+
+    class PMC(ctypes.Structure):
+        _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD), ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t), ("QuotaPagedPoolUsage", ctypes.c_size_t), ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t), ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
+
+    pmc = PMC()
+    pmc.cb = ctypes.sizeof(PMC)
+    k32.GetCurrentProcess.restype = wintypes.HANDLE
+    return psapi.GetProcessMemoryInfo(k32.GetCurrentProcess(), ctypes.byref(pmc), pmc.cb)
+
+
+def test_the_stand_in_reproduces_the_reported_overflow_with_the_old_statements():
+    """Documents the failure on Linux: old code + a function without argtypes + the 64-bit pseudo-handle -> OverflowError."""
+    with pytest.raises(OverflowError, match="int too long to convert"):
+        _legacy_windows_peak(_fake_windows())
+
+
+def test_windows_peak_declares_signatures_and_reports_positive_values():
+    out = P._windows_peak(_fake_windows(321, 654))
+    assert out == {"peak_working_set_mb": 321.0, "peak_commit_mb": 654.0}
+
+
+def test_windows_peak_reports_a_false_return_instead_of_zeros():
+    with pytest.raises(OSError, match="GetProcessMemoryInfo returned FALSE"):
+        P._windows_peak(_fake_windows(ok=False))
+
+
+def test_peak_memory_goes_through_the_windows_path_on_windows(monkeypatch):
+    monkeypatch.setattr(P.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(P, "_windows_apis", lambda: _fake_windows(111, 222))
+    out = P.peak_memory()
+    assert out["peak_working_set_mb"] == 111.0 and out["peak_commit_mb"] == 222.0 and out["peak_memory_error"] is None
+
+
+def test_a_failure_is_recorded_not_swallowed(monkeypatch):
+    monkeypatch.setattr(P.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(P, "_windows_apis", lambda: _fake_windows(ok=False))
+    out = P.peak_memory()
+    assert out["peak_working_set_mb"] is None and out["peak_commit_mb"] is None
+    assert out["peak_memory_error"].startswith("process memory: OSError: GetProcessMemoryInfo returned FALSE")
+    monkeypatch.setattr(P, "_windows_apis", lambda: (_ for _ in ()).throw(OSError("psapi missing")))
+    assert "psapi missing" in P.peak_memory()["peak_memory_error"]
+
+
+def test_peak_memory_on_this_platform_is_measured_without_error():
+    out = P.peak_memory()
+    assert out["peak_memory_error"] is None and out["peak_working_set_mb"] > 0
+    if sys.platform == "win32":
+        assert out["peak_commit_mb"] > 0  # Windows reports both numbers, and both must be positive
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="real Win32 call: only meaningful on Windows")
+def test_real_windows_peak_memory_is_positive():
+    out = P._windows_peak(P._windows_apis())
+    assert out["peak_working_set_mb"] > 0 and out["peak_commit_mb"] > 0
+
+
+def test_summary_and_smoke_report_carry_the_memory_error_field(tmp_path):
+    s = train(tiny(total_env_steps=96, eval_every=48), tmp_path / "r", log=lambda *_: None)
+    assert "peak_memory_error" in s and s["peak_memory_error"] is None
