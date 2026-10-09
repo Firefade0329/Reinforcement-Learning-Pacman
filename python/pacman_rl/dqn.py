@@ -17,6 +17,7 @@ from .env import FIELD_SHAPE, GHOST_FIELD_RANGE, GOLD_FIELD_RANGE, NUM_ACTIONS, 
 from .evaluate import SELECTION_SETS, TRAIN_SEED_BASE, evaluate_batched, seed_set, summarize, train_seed
 from .features import FEATURE_DIM, feature_vector
 from .models import build_model
+from .provenance import ROOT as REPO_ROOT, code_version, environment_info, peak_memory, state_hash
 from .replay import NStepReplay
 
 
@@ -153,6 +154,17 @@ def truncate_log_to(path: Path, upto_env_steps: int) -> tuple[int, int]:
     return len(rows) - len(kept), partial
 
 
+def build_initial_models(cfg: "TrainConfig", device):
+    """Seed torch and build the online network and its target copy.  Nothing else consumes torch's RNG between the
+    seeding and the construction, so equal (arch, width, dueling, obs, seed) gives equal initial weights whatever
+    n_step / lr / ... are; the model is built on the CPU and then moved, so the values do not depend on the device."""
+    torch.manual_seed(cfg.seed)  # also seeds CUDA; GPU runs are statistically, not bitwise, reproducible
+    online = build_model(cfg.arch, cfg.width, cfg.dueling, in_ch(cfg)).to(device)
+    target = copy.deepcopy(online)
+    target.eval()
+    return online, target
+
+
 @torch.no_grad()
 def td_target(online, target, ret, disc, o2, double: bool):
     """Bootstrapped TD target ``y = ret + disc * Q_target(o2, a*)`` for a batch from the n-step replay.
@@ -205,7 +217,6 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
         raise ValueError(f"val_set={cfg.val_set!r}: a training run may only select checkpoints on {list(SELECTION_SETS)}")
     val_seeds = seed_set(cfg.val_set)  # resolved here, at run time, from the config (not bound at import)
     torch.set_num_threads(cfg.threads)
-    torch.manual_seed(cfg.seed)  # also seeds CUDA; GPU runs are statistically, not bitwise, reproducible
     device = resolve_device(cfg.device)
     rng = np.random.default_rng(cfg.seed)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -213,9 +224,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
 
     observe = observe_fn(cfg.arch, cfg.obs)
     shape, dtype = obs_spec(cfg.arch, cfg.obs)
-    online = build_model(cfg.arch, cfg.width, cfg.dueling, in_ch(cfg)).to(device)
-    target = copy.deepcopy(online)
-    target.eval()
+    online, target = build_initial_models(cfg, device)
     opt = torch.optim.Adam(online.parameters(), lr=cfg.lr)
     replay = NStepReplay(cfg.buffer, shape, dtype, cfg.n_envs, cfg.n_step, cfg.gamma, quant_scale(cfg.arch, cfg.obs))
 
@@ -263,7 +272,16 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
         train_log.write(json.dumps({"type": "resume", "env_steps": env_steps, "updates": updates,
                                     "dropped_rows": dropped_rows, "partial_rows": partial_rows}) + "\n")
         train_log.flush()
+    if not resumed:  # fresh start: record what is about to be trained, before the first update
+        online_hash, target_hash = state_hash(online), state_hash(target)
+        assert online_hash == target_hash, "the target network must start as an exact copy of the online network"
+        train_log.write(json.dumps({"type": "init", "arch": cfg.arch, "seed": cfg.seed, "n_step": cfg.n_step,
+                                    "online_hash": online_hash, "target_hash": target_hash}) + "\n")
+        train_log.flush()
+        (out_dir / "code_version.json").write_text(json.dumps(code_version(REPO_ROOT), indent=1), encoding="utf-8")
+        (out_dir / "environment.json").write_text(json.dumps(environment_info(device), indent=1), encoding="utf-8")
     recent_scores, recent_rets, recent_deaths, losses = [], [], [], []
+    bad_loss = torch.zeros((), device=device)  # number of non-finite losses this session, accumulated on the device (no sync)
     t0 = time.time() - minutes0 * 60
 
     def reset_env(e):
@@ -283,13 +301,17 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
         os.replace(tmp, replay_path)
         os.replace(out_dir / "resume.tmp.pt", state_path)  # the state file is the commit marker
 
+    last_eval_step = env_steps if resumed else -1  # a resume state is only ever written right after an evaluation
+
     def do_eval(tag: str):
-        nonlocal best_val, best_step
+        nonlocal best_val, best_step, last_eval_step
+        last_eval_step = env_steps
         recs = evaluate_model(online, cfg, STANDARD, val_seeds)
         s = summarize(recs)
         online.train()
         row = {"type": "eval", "env_steps": env_steps, "updates": updates, "val_score": s["score_mean"],
-               "val_death": s["death_rate"], "val_win": s["win_rate"], "minutes": (time.time() - t0) / 60}
+               "val_death": s["death_rate"], "val_win": s["win_rate"], "minutes": (time.time() - t0) / 60,
+               "weights_finite": all(bool(torch.isfinite(p).all()) for p in online.parameters())}
         train_log.write(json.dumps(row) + "\n")
         train_log.flush()
         log(f"[{tag}] steps={env_steps} updates={updates} val_score={s['score_mean']:.1f} "
@@ -330,6 +352,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
                     for tp, op in zip(target.parameters(), online.parameters()):
                         tp.mul_(1 - cfg.tau).add_(op.detach(), alpha=cfg.tau)
                 updates += 1
+                bad_loss += (~torch.isfinite(loss.detach())).to(bad_loss.dtype)
                 losses.append(loss.detach())  # no per-update GPU sync
                 if len(losses) > 1000:
                     del losses[:-500]
@@ -337,7 +360,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
         if len(recent_scores) >= 20 and env_steps % (cfg.n_envs * 500) == 0:
             row = {"type": "train", "env_steps": env_steps, "updates": updates, "eps": eps,
                    "score": float(np.mean(recent_scores)), "return": float(np.mean(recent_rets)),
-                   "death": float(np.mean(recent_deaths)), "loss": float(torch.stack(losses[-500:]).mean()) if losses else None}
+                   "death": float(np.mean(recent_deaths)), "replay": replay.size, "loss": float(torch.stack(losses[-500:]).mean()) if losses else None}
             train_log.write(json.dumps(row) + "\n")
             train_log.flush()
             recent_scores, recent_rets, recent_deaths = [], [], []
@@ -350,12 +373,15 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
                 train_log.close()
                 return {"interrupted": True, "env_steps": env_steps}
 
-    do_eval("final")
+    if last_eval_step != env_steps:  # the budget ended on an evaluation boundary: that evaluation is the final one
+        do_eval("final")
     train_log.close()
     save_checkpoint(out_dir / "last.pt", online, cfg, {"env_steps": env_steps})
     for f in (state_path, replay_path):  # finished: the resume state is no longer needed
         f.unlink(missing_ok=True)
     summary = {"best_val_score": best_val, "best_env_steps": best_step, "updates": updates,
-               "minutes": (time.time() - t0) / 60}
+               "minutes": (time.time() - t0) / 60, "env_steps": env_steps, "replay_size": replay.size,
+               "episodes_started": episode_k, "nonfinite_loss_updates_this_session": int(bad_loss.item()),
+               "weights_finite": all(bool(torch.isfinite(p).all()) for p in online.parameters()), **peak_memory(device)}
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=1))
     return summary
