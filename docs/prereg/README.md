@@ -147,3 +147,31 @@ Runs store C (`config.json`, evaluation `meta.code_commit`, `run_complete.json`)
   freeze state (see above), a clean tracked tree, and `HEAD` equal to the freeze commit F that every run recorded. It then saves the machine
   and environment of the evaluation (device, software versions, thread count, code version, the gate's result) in
   `results_prereg/final_eval_environment.json`, once, as a separate file; the evaluation files' `meta` contract is unchanged.
+
+## Window record B1 / B2 (descriptive, secondary)
+
+For the n-step windows that enter the replay, the optional record states how often the LATER actions of a window deviate from the greedy
+action that was selected when they were taken (B1), and how often a window that contains an actual death (`info["died"]`, read before the
+reset) also contains such a deviation after a greedy start (B2, a descriptive co-occurrence). Definition details:
+
+* `U = 1[executed action != the argmax the trainer used for that collection batch]` (`action_mismatch_to_selected_greedy`); it is the mismatch with
+  the SELECTED greedy action, ties are not treated specially; a random branch that hits the greedy action is `U = 0`. The start action is recorded
+  separately and is not part of `L` (later deviation). The bootstrap action at the end is not a window action.
+* A window is counted once, when it enters the replay (not per gradient sample); windows are attributed to the 20000-transition bin of their START
+  (batch start + environment index + 1); a short window flushed at a termination or truncation has its own `h`; nothing crosses a reset; tails still
+  queued when the budget ends are reported as pending (nothing is flushed for the record). Death comes from `info["died"]`, never from the reward or
+  from `terminated`; the known death-penalty component is `-10 * gamma^j`.
+* Output per run: `runs/<run_name>/window_diagnostics.json` (schema `window-diagnostics-1`: per bin and `h` the [G][L][D] counts, J / P counts, end-kind
+  counts, start-epsilon sum / min / max, pending per start bin, independent death-event counts, all rates with numerator / denominator, `null` +
+  `no_eligible_windows` at a zero denominator, no NaN) and, during the run, `window_diagnostics.partial.json` (replaced at each validation, removed at the end).
+  Neither name falls under the forbidden prefixes of the integrity check.
+* Switch: `prereg.py run|smoke --window-diagnostics` / `cli train --window-diagnostics` / `train(..., window_diagnostics=True)`. It is NOT part of the
+  configuration: `TrainConfig`, `config.json`, the effective configuration and the frozen configuration are unchanged, and the record's presence or
+  absence changes no integrity check and no H1 / H2 number (tests). A resumed run writes no record.
+* The recorder uses only arrays the training loop already has; it calls no model, draws no random number and adds nothing to the replay. The wiring is
+  tested for exact equality of the run with and without it on the CPU; the cost on the GPU machine is NOT estimated here and must be measured
+  (acceptance: median wall-clock overhead <= 5 %, extra main memory <= 16 MiB per process; see `FREEZE_CHECKLIST.md`).
+* After the 30 runs: `python python/scripts/window_diagnostics_summary.py seal` (separate `window_diagnostics_seal.json`; it is not part of the
+  evaluation seal or the analysis input), then `summarize --out-dir ...` for the central description: per configuration the five per-run rates, mean and
+  sd (ddof=1) over the runs with a defined rate (k of 5) and the pooled ratio as a separate quantity, per `h` and over the 15 start bins. No tests,
+  intervals or rankings; findings suggested by it are post-hoc explanations.
