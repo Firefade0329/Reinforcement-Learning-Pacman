@@ -19,6 +19,7 @@ import math
 import os
 import shutil
 import sys
+import subprocess
 import tempfile
 from datetime import datetime, timezone
 from fractions import Fraction
@@ -48,7 +49,13 @@ FROZEN_REQUIRED = ("eps_start", "eps_end", "eps_frac", "tau", "grad_clip", "val_
                    "validation_device", "worker_count", "max_episode_steps", "train_scenario", "hard_chase_p")
 HEX64 = set("0123456789abcdef")
 SCRIPT_PATH = Path(__file__).resolve()  # the bytes of THIS file must equal the hash the freeze manifest locked
-REQUIRED_DOCS = ("docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md", "docs/prereg/ANALYSIS_SPEC_v0.3.2.md")  # must be in frozen_files in formal mode
+# Mirrors of pacman_rl.freeze_binding.REQUIRED_FROZEN / provenance.FREEZE_MATERIALS (this script must not import the training package; a test keeps them equal).
+REQUIRED_DOCS = ("docs/prereg/matrix.csv", "docs/prereg/frozen_config_v0.3.2.json", "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md", "docs/prereg/ANALYSIS_SPEC_v0.3.2.md",
+                 "docs/prereg/CLAUDE_HANDOFF_v0.3.2.md", "docs/prereg/FREEZE_CHECKLIST.md", "python/pacman_rl/window_diag.py",
+                 "python/scripts/window_diagnostics_summary.py", ".gitattributes", "python/scripts/prereg_analysis.requirements.txt")  # must be in frozen_files in formal mode
+LOCK_REL = "docs/prereg/dependency_lock.txt"
+FREEZE_MATERIALS = ("docs/prereg/frozen_config_v0.3.2.json", "docs/prereg/freeze_manifest.json", "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md",
+                    "docs/prereg/ANALYSIS_SPEC_v0.3.2.md", "docs/prereg/CLAUDE_HANDOFF_v0.3.2.md", "docs/prereg/FREEZE_CHECKLIST.md")  # the only C -> F differences
 
 
 class AnalysisError(Exception):
@@ -127,6 +134,81 @@ def load_matrix(path: Path):
     return [{k: conv.get(k, str)(v) for k, v in r.items()} for r in rows]
 
 
+def _git(root: Path, *args: str, allow_fail: bool = False):
+    """Standard-library git (no training package, no torch).  A missing git, a timeout or a failing command is a refusal, never a silent fallback."""
+    try:
+        r = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise AnalysisError("E_MANIFEST", f"git is unavailable or timed out ({' '.join(args[:2])}): {e}")
+    if r.returncode != 0 and not allow_fail:
+        raise AnalysisError("E_MANIFEST", f"git {' '.join(args[:3])} failed: {r.stderr.strip()[:200]}")
+    return r
+
+
+def check_protocol_evidence(root: Path, manifest: dict, frozen: dict, seal: dict, seal_rel: str) -> dict:
+    """Formal-mode stage 1 (ANALYSIS_SPEC 1.2), before any score is looked at: the sealed protocol evidence names C and F consistently with the manifest, the
+    separate environment file exists with the sealed hash and says CPU / one thread / the frozen machine / clean F, and the CURRENT repository is the freeze
+    commit F (HEAD = F, C an ancestor, python/ tree identical, C -> F differences only in the six freeze-material files, tracked tree clean)."""
+    ev = seal.get("protocol_evidence")
+    if not isinstance(ev, dict):
+        raise AnalysisError("E_MANIFEST", "the evaluation seal has no protocol_evidence", path=seal_rel, json_path="$.protocol_evidence")
+    c, f = ev.get("code_commit"), ev.get("freeze_commit")
+    for k, v in (("code_commit", c), ("freeze_commit", f)):
+        if not (isinstance(v, str) and len(v) == 40 and set(v) <= HEX64):
+            raise AnalysisError("E_MANIFEST", f"protocol_evidence.{k} must be a full 40-hex commit", path=seal_rel, json_path=f"$.protocol_evidence.{k}", actual=v)
+    if c != manifest["code_commit"] or c != frozen["code_commit"]:
+        raise AnalysisError("E_MANIFEST", "protocol_evidence.code_commit differs from the manifest / frozen configuration", path=seal_rel, expected=manifest["code_commit"], actual=c)
+    fe = ev.get("final_eval_environment")
+    if not isinstance(fe, dict) or not isinstance(fe.get("path"), str) or not is_hex64(fe.get("sha256")):
+        raise AnalysisError("E_MANIFEST", "protocol_evidence.final_eval_environment needs a path and a 64-hex sha256", path=seal_rel, json_path="$.protocol_evidence.final_eval_environment")
+    env_path = (root / fe["path"]).resolve()
+    try:
+        env_path.relative_to(root.resolve())
+    except ValueError:
+        raise AnalysisError("E_MANIFEST", "the environment file path leaves the project root", path=fe["path"])
+    if not env_path.is_file():
+        raise AnalysisError("E_MISSING_FILE", "the final-evaluation environment file is missing", path=fe["path"])
+    if sha256_file(env_path) != fe["sha256"]:
+        raise AnalysisError("E_HASH_MISMATCH", "the final-evaluation environment file differs from its sealed hash", path=fe["path"], expected=fe["sha256"], actual=sha256_file(env_path))
+    env = _obj(read_json(env_path, fe["path"]), fe["path"], None, "$")
+    sub = lambda k: env.get(k) if isinstance(env.get(k), dict) else {}  # noqa: E731
+    machine = frozen.get("machine_id")
+    bad = []
+    if not (isinstance(machine, str) and machine) or env.get("machine_id") != machine:
+        bad.append(("machine_id", machine, env.get("machine_id")))
+    if env.get("evaluation_device") != "cpu" or sub("environment").get("device_type") != "cpu":
+        bad.append(("evaluation_device / environment.device_type", "cpu", [env.get("evaluation_device"), sub("environment").get("device_type")]))
+    if sub("environment").get("torch_threads") != 1 or type(sub("environment").get("torch_threads")) is not int:
+        bad.append(("environment.torch_threads", 1, sub("environment").get("torch_threads")))
+    if sub("code_version").get("git_sha") != f or sub("code_version").get("git_dirty") is not False:
+        bad.append(("code_version.git_sha / git_dirty", [f, False], [sub("code_version").get("git_sha"), sub("code_version").get("git_dirty")]))
+    pre = sub("preflight")
+    if pre.get("head") != f or pre.get("freeze_commit_of_runs") != f or pre.get("code_commit") != c:
+        bad.append(("preflight head / freeze_commit_of_runs / code_commit", [f, f, c], [pre.get("head"), pre.get("freeze_commit_of_runs"), pre.get("code_commit")]))
+    if bad:
+        raise AnalysisError("E_MANIFEST", f"the final-evaluation environment evidence is not acceptable: {bad[0][0]}", path=fe["path"], expected=bad[0][1], actual=bad[0][2])
+    # --- the current repository
+    head = _git(root, "rev-parse", "HEAD").stdout.strip()
+    if head != f:
+        raise AnalysisError("E_MANIFEST", "the current HEAD is not the sealed freeze commit F", expected=f, actual=head)
+    if _git(root, "rev-parse", "--verify", f"{c}^{{commit}}", allow_fail=True).stdout.strip() != c:
+        raise AnalysisError("E_MANIFEST", "the code commit C is not a commit of this repository", actual=c)
+    if _git(root, "merge-base", "--is-ancestor", c, "HEAD", allow_fail=True).returncode != 0:
+        raise AnalysisError("E_MANIFEST", "the code commit C is not an ancestor of the freeze commit F", expected=c, actual=head)
+    if _git(root, "rev-parse", f"{c}:python").stdout.strip() != _git(root, "rev-parse", "HEAD:python").stdout.strip():
+        raise AnalysisError("E_MANIFEST", "the python/ tree at F differs from the one at C")
+    changed = [x for x in _git(root, "diff", "--name-only", c, "HEAD").stdout.splitlines() if x]
+    outside = sorted(x for x in changed if x not in FREEZE_MATERIALS)
+    if outside:
+        raise AnalysisError("E_MANIFEST", "files outside the six freeze-material files differ between C and F", actual=outside[:5])
+    dirty = [x for x in _git(root, "status", "--porcelain", "--untracked-files=no").stdout.splitlines() if x.strip()]
+    if dirty:
+        raise AnalysisError("E_MANIFEST", "the working tree has uncommitted changes to tracked files", actual=[x[3:] for x in dirty][:5])
+    return {"code_commit": c, "freeze_commit": f, "head": head, "final_eval_environment": {"path": fe["path"], "sha256": fe["sha256"], "machine_id": machine},
+            "git_checks": ["HEAD == F", "C is an ancestor of F", "python/ tree identical at C and F", "C->F differences within the six freeze-material files",
+                           "tracked working tree clean"]}
+
+
 def validate_inputs(manifest_path: Path, input_root: Path, project_root: Path | None, mode: str):
     """Steps 1-7 of ANALYSIS_SPEC 2.3.  Returns a context dict; raises AnalysisError."""
     if not manifest_path.is_file():
@@ -166,6 +248,9 @@ def validate_inputs(manifest_path: Path, input_root: Path, project_root: Path | 
         for rel in REQUIRED_DOCS:
             if rel not in manifest["frozen_files"]:
                 raise AnalysisError("E_MANIFEST", f"the preregistration / specification text {rel} is not frozen (missing from frozen_files)", path=rel)
+    if mode == "formal":
+        if manifest["dependency_lock_path"] != LOCK_REL:
+            raise AnalysisError("E_MANIFEST", f"the dependency snapshot must be {LOCK_REL}", path="dependency_lock_path", expected=LOCK_REL, actual=manifest["dependency_lock_path"])
     running = sha256_file(SCRIPT_PATH)
     if running != manifest["frozen_files"][manifest["analysis_script_path"]]:
         raise AnalysisError("E_HASH_MISMATCH", "the analysis script being run is not the frozen one", path=manifest["analysis_script_path"],
@@ -225,6 +310,15 @@ def validate_inputs(manifest_path: Path, input_root: Path, project_root: Path | 
         dv = _obj(dv, manifest_path.name, None, jp)
         for k in ("id", "description", "source"):
             _str(_req(dv, k, manifest_path.name, None, jp), manifest_path.name, None, f"{jp}.{k}")
+    protocol = None
+    if mode == "formal":  # everything below happens before any evaluation file is opened
+        fill = frozen.get("to_fill_at_freeze") if isinstance(frozen.get("to_fill_at_freeze"), dict) else {}
+        for field, target in (("analysis_script_sha256", manifest["analysis_script_path"]), ("preregistration_document_sha256", "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md"),
+                              ("dependency_lock_sha256", manifest["dependency_lock_path"])):
+            if not is_hex64(fill.get(field)) or fill.get(field) != manifest["frozen_files"].get(target):
+                raise AnalysisError("E_CONFIG_MISMATCH", f"to_fill_at_freeze.{field} does not equal the manifest hash of {target}", path=manifest["config_path"],
+                                    json_path=f"$.to_fill_at_freeze.{field}", expected=manifest["frozen_files"].get(target), actual=fill.get(field))
+        protocol = check_protocol_evidence(root, manifest, frozen, seal, manifest["seal_path"])
     rels = ["config.json", "summary.json", "last/standard.json", "best/standard.json"] + (["last/hard.json"] if hard else [])
     required = {f"{n}/{rel}" for n in names for rel in rels}
     if set(seal["files"]) != required:
@@ -254,7 +348,7 @@ def validate_inputs(manifest_path: Path, input_root: Path, project_root: Path | 
     # --- step 4: config / summary / meta
     ctx = {"manifest": manifest, "root": root, "rows": rows, "frozen": frozen, "frozen_sha": frozen_sha, "hard": hard, "seal": seal,
            "seal_sha": sha256_file(seal_path), "docs": docs, "names": names, "rels": rels, "mode": mode, "input_root": input_root,
-           "manifest_sha": sha256_file(manifest_path)}
+           "manifest_sha": sha256_file(manifest_path), "protocol": protocol}
     check_run_documents(ctx)
     # --- steps 5-7: records
     Y, files = check_records(ctx)
@@ -658,6 +752,9 @@ def build_report(ctx, ep, expl, prim, index_sha, res, devs):
            "## 1. Frozen identity and integrity", f"- code commit `{ctx['manifest']['code_commit']}`; mode `{mode}`; hard scenario: {'enabled' if ctx['hard'] else 'not run'}",
            f"- 30 runs, {len(ctx['files'])} evaluation files x 300 unique test seeds 30000..30299, 15 initial-weight pairs equal, validation 15 x 50 each (all checked before any statistic)",
            f"- failed attempts archived (seal): {len(ctx['seal']['attempts'])}; bootstrap index SHA-256 `{index_sha}`",
+           *([f"- protocol evidence: code commit C `{ctx['protocol']['code_commit']}`, freeze commit F = HEAD `{ctx['protocol']['freeze_commit']}`, final-evaluation environment "
+              f"`{ctx['protocol']['final_eval_environment']['path']}` (sha256 `{ctx['protocol']['final_eval_environment']['sha256']}`, machine `{ctx['protocol']['final_eval_environment']['machine_id']}`); "
+              f"checked: {'; '.join(ctx['protocol']['git_checks'])}"] if ctx["protocol"] else []),
            f"- deviations on record: {len(devs)}" + ("" if devs else " (none declared in the freeze manifest, none archived in the seal; the script does not infer deviations)")]
     out += [f"  - `{d['id']}` ({d['origin']}): {d['description']} [source: {d['source']}]" for d in devs]
     L = ep["last_standard"]
@@ -775,7 +872,7 @@ def analyze(manifest: Path, input_root: Path, output_dir: Path, mode: str, proje
     analysis = {
         "schema_version": "prereg-analysis-1", "analysis_spec_version": SPEC_VERSION, "mode": mode, "complete": True,
         "provenance": {"analysis_script_sha256": sha256_file(SCRIPT_PATH), "code_commit": ctx["manifest"]["code_commit"], "freeze_manifest_sha256": ctx["manifest_sha"],
-                       "frozen_files": ctx["manifest"]["frozen_files"], "evaluation_seal_sha256": ctx["seal_sha"], "evaluation_device": ctx["frozen"]["final_eval_device"],
+                       "frozen_files": ctx["manifest"]["frozen_files"], "evaluation_seal_sha256": ctx["seal_sha"], "protocol_evidence": ctx["protocol"], "evaluation_device": ctx["frozen"]["final_eval_device"],
                        "numpy_version": np.__version__, "python_version": sys.version.split()[0], "utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")},
         "integrity": {"expected_runs": 30, "actual_runs": 30, "evaluation_files": len(ctx["files"]), "records_per_file": 300, "test_seed_range": [30000, 30299],
                       "initial_hash_pairs_equal": 15, "validation_schedule": "15 x 50", "hard_enabled": ctx["hard"], "all_checks_passed": True},
@@ -786,7 +883,7 @@ def analyze(manifest: Path, input_root: Path, output_dir: Path, mode: str, proje
         "resource_records": resource_records(ctx),
         "deviations": deviations(ctx), "limitations": ["5 training seeds", "single map", "privileged BFS-field input", "equal budget is not equal compute", "GPU selection vs CPU test devices", "t intervals assume near-normal differences"],
     }
-    input_manifest = {"mode": mode, "files": {k: {"sha256": v} for k, v in sorted(ctx["files"].items())}, "seal_sha256": ctx["seal_sha"],
+    input_manifest = {"mode": mode, "files": {k: {"sha256": v} for k, v in sorted(ctx["files"].items())}, "seal_sha256": ctx["seal_sha"], "protocol_evidence": ctx["protocol"],
                       "config_and_summary_files": {k: v for k, v in ctx["seal"]["files"].items() if k.endswith(("config.json", "summary.json"))}}
     out_parent = output_dir.parent
     out_parent.mkdir(parents=True, exist_ok=True)

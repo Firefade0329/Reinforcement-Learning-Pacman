@@ -227,3 +227,15 @@ carries the anonymous `machine_id` of the frozen configuration next to `utc`, `e
 file says the same machine id as the frozen configuration, CPU, one torch thread, `code_version` = clean F, and a preflight with head = freeze_commit_of_runs = F
 and code_commit = C. Any failure refuses the seal (nothing is written). The machine id is only an anonymous label, not a hardware attestation: CPU/GPU model, OS,
 driver, TF32 and power settings come from the freeze-time environment note.
+
+## What the formal analysis verifies before it looks at a score
+
+`prereg_analysis.py analyze --mode formal` (standard-library git, no torch, no training package) first checks, in this order and before any evaluation file is opened:
+the frozen files (all mandatory ones listed and byte-identical, the running script equal to the frozen one, the dependency snapshot at its fixed path, the three
+configuration hashes equal to the manifest entries); then the sealed `protocol_evidence` (C and F well-formed and equal to the manifest / configuration, the separate
+environment file present with the sealed hash and saying CPU, one thread, the frozen anonymous machine, clean F and a preflight with head = freeze_commit_of_runs = F,
+code_commit = C); then the CURRENT repository (HEAD = F, C a commit and an ancestor of F, identical `python/` trees, C -> F differences only in the six
+freeze-material files, tracked tree clean). Missing git, a timeout or any failed relation is a refusal (`E_MANIFEST`; a missing environment file `E_MISSING_FILE`; a changed
+one `E_HASH_MISMATCH`), never a silent fallback to hash comparison. The result lists C, F, HEAD, the environment file path / hash / machine id and the checks in
+`analysis.json` (`provenance.protocol_evidence`), `input_manifest.json` and the report. Synthetic mode needs no repository. The file hashes cannot show that a frozen file was
+never read earlier; that stays with the external freeze record and the execution log.
