@@ -216,3 +216,14 @@ and pytest. `manifest.dependency_lock_path` must be this path, `to_fill_at_freez
 that first appears in F, or differs in F, is refused). `python/scripts/prereg_analysis.requirements.txt` (the analysis NumPy pin) is frozen
 separately as another required file and can never stand in for the snapshot, nor can `python/requirements.txt` (lower bounds only). The format check cannot
 show that the snapshot is complete; the per-package comparison with the accepted environment is the local executor's record.
+
+## Final-evaluation environment evidence and `protocol_evidence` of the evaluation seal
+
+`results_prereg/final_eval_environment.json` (saved once by `final-eval`, separate from the evaluation files, whose `meta` contract is unchanged) now also
+carries the anonymous `machine_id` of the frozen configuration next to `utc`, `evaluation_device`, `environment`, `code_version` and `preflight`.
+`seal-eval` attaches a top-level `protocol_evidence` object to `evaluation_seal.json` (the core `files` set is unchanged): `code_commit` C, `freeze_commit` F and
+`final_eval_environment` = {path relative to the project, SHA-256}. It is extracted from facts re-verified at sealing time, never typed in: the 30
+`run_complete.json` identities all say C and F; HEAD = F with a legitimate freeze state, a clean tracked tree and a passing freeze binding; and the environment
+file says the same machine id as the frozen configuration, CPU, one torch thread, `code_version` = clean F, and a preflight with head = freeze_commit_of_runs = F
+and code_commit = C. Any failure refuses the seal (nothing is written). The machine id is only an anonymous label, not a hardware attestation: CPU/GPU model, OS,
+driver, TF32 and power settings come from the freeze-time environment note.

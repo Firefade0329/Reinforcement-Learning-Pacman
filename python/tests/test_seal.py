@@ -292,7 +292,7 @@ def test_evaluation_seal_hashes_every_file_the_analysis_reads(fresh):
     final(results, script, unseal=True)
     fm = results / "freeze_manifest.json"
     fm.write_text("{}")
-    out = runner.make_evaluation_seal(results, results / "m.json", fm, rows=ROWS, freeze=FREEZE)
+    out = runner.make_evaluation_seal(results, results / "m.json", fm, rows=ROWS, freeze=FREEZE, allow_unfrozen=True)
     obj = json.loads((results / "evaluation_seal.json").read_text())
     assert obj["schema_version"] == "prereg-seal-1" and obj["synthetic"] is False and obj["all_training_complete"] is True
     assert obj["all_checkpoint_checks_passed"] is True and obj["runs"] == [r["run_name"] for r in ROWS] and obj["attempts"] == []
@@ -304,7 +304,7 @@ def test_evaluation_seal_hashes_every_file_the_analysis_reads(fresh):
     for key, h in obj["files"].items():
         assert h == file_sha256(results / "runs" / key.split("/", 1)[0] / key.split("/", 1)[1])
     with pytest.raises(runner.Refused, match="already exists"):
-        runner.make_evaluation_seal(results, results / "m.json", fm, rows=ROWS, freeze=FREEZE)
+        runner.make_evaluation_seal(results, results / "m.json", fm, rows=ROWS, freeze=FREEZE, allow_unfrozen=True)
 
 
 def test_evaluation_seal_refuses_missing_files_changed_checkpoints_and_undeclared_hard(fresh):

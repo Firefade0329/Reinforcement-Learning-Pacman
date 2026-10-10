@@ -405,7 +405,10 @@ def save_final_eval_environment(results: Path, freeze: dict, evidence: dict | No
     import torch
 
     torch.set_num_threads(freeze["final_eval_threads"])
-    rec = {"utc": utc(), "evaluation_device": freeze["final_eval_device"], "environment": P.environment_info(freeze["final_eval_device"]),
+    machine = freeze.get("machine_id")
+    if evidence is not None and not (isinstance(machine, str) and machine):  # formal: the anonymous machine id of the frozen configuration
+        raise Refused("the frozen configuration has no machine_id: the evaluation machine cannot be identified")
+    rec = {"utc": utc(), "machine_id": machine, "evaluation_device": freeze["final_eval_device"], "environment": P.environment_info(freeze["final_eval_device"]),
            "code_version": P.code_version(root or ROOT), "preflight": evidence}
     out = results / "final_eval_environment.json"
     if out.exists():
@@ -436,15 +439,79 @@ def final_eval(manifest: Path, results: Path, analysis_script: Path, *, unseal: 
     return index
 
 
-def make_evaluation_seal(results: Path, pretest_manifest: Path, freeze_manifest: Path, out: Path | None = None, *, rows=None, freeze=None) -> str:
-    """After the final evaluation: hash every file the analysis reads and write evaluation_seal.json."""
+ENV_REL = "final_eval_environment.json"
+
+
+def environment_evidence_problems(rec, freeze: dict, f_commit: str, c_commit: str) -> list[str]:
+    """What the separate final-evaluation environment file must say (ANALYSIS_SPEC 1.2): anonymous machine id equal to the frozen one, CPU, one thread,
+    the evaluation code is F and clean, the preflight record names C and F."""
+    if not isinstance(rec, dict):
+        return [f"{ENV_REL} is not a JSON object"]
+    env, cv, pre = (rec.get(k) if isinstance(rec.get(k), dict) else {} for k in ("environment", "code_version", "preflight"))
+    p = []
+    machine = freeze.get("machine_id")
+    if not (isinstance(machine, str) and machine) or rec.get("machine_id") != machine:
+        p.append(f"{ENV_REL}: machine_id {rec.get('machine_id')!r} differs from the frozen configuration's {machine!r}")
+    if rec.get("evaluation_device") != "cpu" or env.get("device_type") != "cpu":
+        p.append(f"{ENV_REL}: the final evaluation must run on the CPU (evaluation_device {rec.get('evaluation_device')!r}, device_type {env.get('device_type')!r})")
+    if env.get("torch_threads") != 1:
+        p.append(f"{ENV_REL}: torch_threads is {env.get('torch_threads')!r}, expected 1")
+    if cv.get("git_sha") != f_commit or cv.get("git_dirty") is not False:
+        p.append(f"{ENV_REL}: code_version must be the clean freeze commit F {f_commit} (git_sha {cv.get('git_sha')!r}, git_dirty {cv.get('git_dirty')!r})")
+    if pre.get("head") != f_commit or pre.get("freeze_commit_of_runs") != f_commit or pre.get("code_commit") != c_commit:
+        p.append(f"{ENV_REL}: preflight must record head = freeze_commit_of_runs = F and code_commit = C")
+    return p
+
+
+def evaluation_protocol_evidence(results: Path, freeze: dict, rows, *, root: Path | None = None) -> dict:
+    """The `protocol_evidence` object of the evaluation seal, extracted from facts that are re-verified NOW: the 30 run_complete identities (C, F), the
+    clean freeze state (HEAD = F), the freeze binding, and the separate environment file.  It is never filled in by hand."""
+    root = root or ROOT
+    reject_env()
+    problems = PR.check_matrix_file() + freeze_problems(freeze)
+    c = freeze.get("code_commit")
+    state = P.freeze_state(root, c, must_exist_in_c=FB_CODE_SIDE)
+    problems += state["problems"]
+    bind, _ = binding_problems(root)
+    problems += bind
+    f = state["head"]
+    ids = set()
+    for r in rows:
+        done_file = results / "runs" / r["run_name"] / "run_complete.json"
+        ids.add(tuple(json.loads(done_file.read_text()).get(k) for k in ("code_commit", "freeze_commit")) if done_file.is_file() else None)
+    if ids != {(c, f)}:
+        problems.append(f"the runs do not all record code commit C = {c} and freeze commit F = HEAD = {f}")
+    env_file = results / ENV_REL
+    env_sha = None
+    if not env_file.is_file():
+        problems.append(f"{ENV_REL} is missing: the final evaluation has not saved its environment")
+    else:
+        try:
+            problems += environment_evidence_problems(json.loads(env_file.read_text(encoding="utf-8")), freeze, f, c)
+        except ValueError as e:
+            problems.append(f"{ENV_REL} is not valid JSON: {e}")
+        env_sha = P.file_sha256(env_file)
+    try:
+        rel = env_file.resolve().relative_to(Path(root).resolve()).as_posix()
+    except ValueError:
+        rel = None
+        problems.append("the results directory is not inside the project: the environment file path cannot be recorded relative to the project root")
+    if problems:
+        raise Refused("refusing to seal the evaluation:\n  - " + "\n  - ".join(problems))
+    return {"code_commit": c, "freeze_commit": f, "final_eval_environment": {"path": rel, "sha256": env_sha}}
+
+
+def make_evaluation_seal(results: Path, pretest_manifest: Path, freeze_manifest: Path, out: Path | None = None, *, rows=None, freeze=None,
+                         allow_unfrozen: bool = False, root: Path | None = None) -> str:
+    """After the final evaluation: hash every file the analysis reads and write evaluation_seal.json (with `protocol_evidence` unless unfrozen test use)."""
     from pacman_rl import seal
 
     rows, freeze = rows or PR.load_matrix(), freeze or PR.load_freeze()
     out = out or results / "evaluation_seal.json"
     if out.exists():
         raise Refused(f"{out.name} already exists; the evaluation is sealed once")
-    obj = seal.build_evaluation_seal(results, rows, freeze, pretest_manifest, freeze_manifest)
+    evidence = None if allow_unfrozen else evaluation_protocol_evidence(results, freeze, rows, root=root)
+    obj = seal.build_evaluation_seal(results, rows, freeze, pretest_manifest, freeze_manifest, protocol_evidence=evidence)
     out.write_text(json.dumps(obj, indent=1, sort_keys=True), encoding="utf-8")
     return P.file_sha256(out)
 
@@ -521,7 +588,7 @@ def main(argv=None):
         return 0
     if a.cmd == "seal-eval":
         try:
-            sha = make_evaluation_seal(a.results_dir, a.manifest, a.freeze_manifest)
+            sha = make_evaluation_seal(a.results_dir, a.manifest, a.freeze_manifest)  # formal: protocol_evidence is re-verified and attached
         except Exception as e:  # noqa: BLE001
             raise Refused(str(e))
         print(f"evaluation seal written, sha256 {sha}")

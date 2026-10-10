@@ -181,7 +181,7 @@ def required_run_files(hard_enabled: bool) -> list[str]:
     return files + (["last/hard.json"] if hard_enabled else [])
 
 
-def build_evaluation_seal(results_dir, rows, freeze, pretest_manifest, freeze_manifest, *, synthetic=False) -> dict:
+def build_evaluation_seal(results_dir, rows, freeze, pretest_manifest, freeze_manifest, *, synthetic=False, protocol_evidence=None) -> dict:
     """Seal written AFTER the final evaluation: the hash of every file the analysis will read, plus the facts the analysis
     must be able to rely on (training complete, checkpoints unchanged since the pre-test manifest, failed attempts)."""
     results_dir = Path(results_dir)
@@ -214,9 +214,12 @@ def build_evaluation_seal(results_dir, rows, freeze, pretest_manifest, freeze_ma
         raise ManifestError("cannot seal the evaluation:\n  - " + "\n  - ".join(problems))
     attempts_file = results_dir / "attempts.jsonl"
     attempts = [json.loads(x) for x in attempts_file.read_text().splitlines() if x.strip()] if attempts_file.exists() else []
-    return {"schema_version": EVAL_SEAL_SCHEMA, "synthetic": synthetic, "freeze_manifest_sha256": _sha_file(freeze_manifest),
-            "all_training_complete": True, "all_checkpoint_checks_passed": True, "runs": [r["run_name"] for r in rows],
-            "files": files, "attempts": attempts}
+    obj = {"schema_version": EVAL_SEAL_SCHEMA, "synthetic": synthetic, "freeze_manifest_sha256": _sha_file(freeze_manifest),
+           "all_training_complete": True, "all_checkpoint_checks_passed": True, "runs": [r["run_name"] for r in rows],
+           "files": files, "attempts": attempts}
+    if protocol_evidence is not None:  # top level only: the core `files` set stays exactly the analysis inputs
+        obj["protocol_evidence"] = protocol_evidence
+    return obj
 
 
 def build_freeze_manifest(root, matrix_path, config_path, analysis_script, dependency_lock, extra_frozen=(), *, spec_version="0.3.2", deviations=()) -> dict:
