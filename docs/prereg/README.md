@@ -36,20 +36,33 @@ frozen configuration, and `PACMAN_*` environment variables that could override a
 Each run directory gets `code_version.json`, `environment.json` (GPU model, software versions, threads, determinism
 switches only), the initial weight hash in `train_log.jsonl`, and `run_complete.json` after it passes its checks.
 
-Smoke runs write to `results_prereg_smoke/` (never to the formal `results_prereg/`) and produce `smoke_report.json`:
+Smoke runs write to `results_prereg_smoke/` (never to the formal `results_prereg/`) and produce `smoke_report_<profile>.json`:
 wall time, updates, stored replay samples, env-steps/s, peak process memory (Windows: working set and commit) and CUDA peaks,
 CPU evaluation time of last/best on the smoke seeds, equality of the n=1/n=3 initial hashes and an interrupt/resume check.
 Smoke scores are for plumbing only; nothing is selected or tuned from them.
 
 ## Smoke runs on the formal machine (what to run and what to send back)
 
+The two profiles are independent: run names carry the profile (`runs/smoke_quick_<arch>_n<N>_s<seed>`, `runs/smoke_load_...`), each
+writes its own `smoke_report_<profile>.json` and `interrupt_check_<profile>/` into the same `results_prereg_smoke/`, and either order
+works. Running one profile again skips only its own completed runs and rewrites only its own report. (Before this was fixed the two
+profiles shared run names, so `load` after `quick` skipped its runs and overwrote the report.)
+
 1. `python python/scripts/prereg.py smoke --profile quick --device cuda`: 12 short runs (seeds 900/901, all six
-   configurations); checks the GPU path, save/load, last/best CPU evaluation, equality of the n=1/n=3 initial hashes and the
-   interrupt/resume path.
+   configurations, 2000 steps each, buffer 4000); checks the GPU path, save/load, last/best CPU evaluation, equality of the
+   n=1/n=3 initial hashes (6 pairs here, 15 at the freeze) and the interrupt/resume path.
+   Output: `results_prereg_smoke/smoke_report_quick.json`.
 2. `python python/scripts/prereg.py smoke --profile load --device cuda`: two res8 runs in parallel with the replay buffer
-   filled (110000 steps); read peak working set / commit and `cuda_max_*` in the report; repeat with the intended worker count.
-3. Send back `results_prereg_smoke/smoke_report.json` (it holds only allow-listed environment fields and no paths) and the
-   observed wall time.  Do not commit `results_prereg_smoke/` (it is git-ignored) and do not use smoke scores for any decision.
+   filled (110000 steps, buffer 100000); read peak working set / commit and `cuda_max_*` in the report; repeat with the intended
+   worker count. Output: `results_prereg_smoke/smoke_report_load.json`.
+3. Send back the report(s) (they hold only allow-listed environment fields and no paths) and the observed wall time.  Do not
+   commit `results_prereg_smoke/` (it is git-ignored) and do not use smoke scores for any decision.
+
+**Reading the memory numbers.** Every run is its own subprocess and the reported peaks are per process, not summed. On the
+RTX A1000 laptop (Windows, torch 2.14 CUDA build) a `quick` run peaks at about 1540 MB working set: that is the PyTorch + CUDA
+process baseline (its 4000-sample buffer is only about 41 MB). The `load` runs peak at about 2.5 GB working set and 3.3 GB
+commit, which is the same baseline plus the roughly 1.0 GB a 100000-sample uint8 replay buffer needs, so the two profiles agree.
+Do not read the `quick` numbers as the memory need of a formal run.
 
 ## Run directory layout (formal runs, `results_prereg/runs/<run_name>/`)
 
