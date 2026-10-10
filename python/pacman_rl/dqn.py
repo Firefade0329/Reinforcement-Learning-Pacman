@@ -19,6 +19,7 @@ from .features import FEATURE_DIM, feature_vector
 from .models import build_model
 from .provenance import ROOT as REPO_ROOT, code_version, environment_info, peak_memory, state_hash
 from .replay import NStepReplay
+from .window_diag import WindowRecorder, action_mismatch, write_atomic
 
 
 @dataclass
@@ -190,15 +191,18 @@ def td_target(online, target, ret, disc, o2, double: bool):
     return ret + disc * q2
 
 
-def collect_step(envs, obs, actions, replay, observe, ep_ret, reset_env):
+def collect_step(envs, obs, actions, replay, observe, ep_ret, reset_env, observer=None):
     """Advance every environment by one transition and feed the replay.  The replay always receives the
     observation REACHED by the step (also at an episode end: the real terminal / time-limit observation,
     which truncated episodes bootstrap from); only afterwards is the environment reset and ``obs[i]`` replaced
-    by the first observation of the new episode.  Returns ``(score, return, died)`` of every episode that ended."""
+    by the first observation of the new episode.  Returns ``(score, return, died)`` of every episode that ended.
+    ``observer`` (window diagnostics, optional) receives the scalars of the transition before the replay and before any reset."""
     finished = []
     for i, e in enumerate(envs):
         _, r, term, trunc, info = e.step(int(actions[i]))
         nxt = observe(e)
+        if observer is not None:
+            observer.step(i, int(actions[i]), r, term, trunc, info["died"], info["won"])
         replay.add(i, obs[i], int(actions[i]), r, nxt, term, trunc)
         ep_ret[i] += r
         if term or trunc:
@@ -220,10 +224,12 @@ def checked_train_seed(cfg: "TrainConfig", k: int, resumed: bool = False) -> int
     return train_seed(cfg.seed, k)
 
 
-def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop_after: int | None = None) -> dict:
+def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop_after: int | None = None, window_diagnostics: bool = False) -> dict:
     """Train ``cfg``.  Every eval boundary writes resume.pt + resume_replay.npz in ``out_dir``; calling
     train() again on the same directory continues from there (episodes restart, RNG streams continue),
-    so a killed or suspended machine loses at most ``eval_every`` steps.  ``_stop_after`` is for tests."""
+    so a killed or suspended machine loses at most ``eval_every`` steps.  ``_stop_after`` is for tests.
+    ``window_diagnostics`` (default off) writes the descriptive B1/B2 record ``window_diagnostics.json`` next to the run (see window_diag.py);
+    it is not part of the configuration, changes nothing the run computes, and is skipped for a resumed run."""
     if cfg.val_set not in SELECTION_SETS:
         raise ValueError(f"val_set={cfg.val_set!r}: a training run may only select checkpoints on {list(SELECTION_SETS)}")
     val_seeds = seed_set(cfg.val_set)  # resolved here, at run time, from the config (not bound at import)
@@ -278,6 +284,12 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
             log(f"[resume] continuing from env_steps={env_steps} updates={updates}")
         else:
             log("[resume] saved state does not match this config; starting from scratch")
+    recorder = None
+    if window_diagnostics and resumed:
+        log("[window diagnostics] skipped: a resumed run has no complete window history")
+    elif window_diagnostics:
+        recorder = WindowRecorder(cfg.n_envs, cfg.n_step, cfg.gamma, cfg.total_env_steps)
+        replay.on_emit = recorder.on_emit  # read-only verification that the replay emits exactly the windows the recorder counted
     train_log = open(out_dir / "train_log.jsonl", "a" if resumed else "w")
     if resumed:  # explicit marker so a reader of the log can see where the run was interrupted
         train_log.write(json.dumps({"type": "resume", "env_steps": env_steps, "updates": updates,
@@ -313,6 +325,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
         os.replace(out_dir / "resume.tmp.pt", state_path)  # the state file is the commit marker
 
     last_eval_step = env_steps if resumed else -1  # a resume state is only ever written right after an evaluation
+    diag_meta = {"run_name": out_dir.name, "arch": cfg.arch, "n_step": cfg.n_step, "run_seed": cfg.seed, "git_sha": code_version(REPO_ROOT)["git_sha"]} if recorder is not None else None
 
     def do_eval(tag: str):
         nonlocal best_val, best_step, last_eval_step
@@ -320,6 +333,8 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
         recs = evaluate_model(online, cfg, STANDARD, val_seeds)
         s = summarize(recs)
         online.train()
+        if recorder is not None:  # low-frequency snapshot (one per validation), atomically replaced
+            write_atomic(out_dir / "window_diagnostics.partial.json", recorder.to_dict({**diag_meta, "snapshot_env_steps": env_steps}))
         row = {"type": "eval", "env_steps": env_steps, "updates": updates, "val_score": s["score_mean"],
                "val_death": s["death_rate"], "val_win": s["win_rate"], "minutes": (time.time() - t0) / 60,
                "weights_finite": all(bool(torch.isfinite(p).all()) for p in online.parameters())}
@@ -337,8 +352,10 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
         greedy = greedy_actions(online, obs, device)
         explore = rng.random(cfg.n_envs) < eps
         actions = np.where(explore, rng.integers(0, NUM_ACTIONS, cfg.n_envs), greedy)
+        if recorder is not None:  # numpy only: the greedy array and eps are the ones this batch really used
+            recorder.begin_batch(env_steps, eps, action_mismatch(actions, greedy))
 
-        for score, ep_return, died in collect_step(envs, obs, actions, replay, observe, ep_ret, reset_env):
+        for score, ep_return, died in collect_step(envs, obs, actions, replay, observe, ep_ret, reset_env, recorder):
             recent_scores.append(score)
             recent_rets.append(ep_return)
             recent_deaths.append(died)
@@ -384,6 +401,12 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
     if last_eval_step != env_steps:  # the budget ended on an evaluation boundary: that evaluation is the final one
         do_eval("final")
     train_log.close()
+    if recorder is not None:
+        final = recorder.to_dict(diag_meta)
+        write_atomic(out_dir / "window_diagnostics.json", final)
+        (out_dir / "window_diagnostics.partial.json").unlink(missing_ok=True)
+        if not final["integrity"]["complete"]:
+            log(f"[window diagnostics] INTEGRITY ERROR: {final['integrity']['errors'] or final['integrity']['checks']}")
     save_checkpoint(out_dir / "last.pt", online, cfg, {"env_steps": env_steps})
     for f in (state_path, replay_path):  # finished: the resume state is no longer needed
         f.unlink(missing_ok=True)

@@ -139,7 +139,7 @@ def test_runs_complete_from_scratch_without_any_test_evaluation(two_runs):
 
 def test_jobs_are_dispatched_in_matrix_order(tmp_path, monkeypatch):
     started = []
-    monkeypatch.setattr(runner, "execute", lambda name, cfg, results, order=None: (started.append((order, name)), "done")[1])
+    monkeypatch.setattr(runner, "execute", lambda name, cfg, results, order=None, **kw: (started.append((order, name)), "done")[1])
     rows = ROWS[:8]
     runner.run_matrix(rows, FREEZE, tmp_path, 1, TINY)
     assert [o for o, _ in started] == [r["order"] for r in rows] and [n for _, n in started] == [r["run_name"] for r in rows]
@@ -343,3 +343,18 @@ def test_smoke_report_ok_is_false_when_the_resume_check_fails(monkeypatch, tmp_p
     monkeypatch.setattr(runner, "interrupt_resume_check", lambda path: {"ok": False, "note": "x"})
     rep = runner.smoke("quick", "cpu", tmp_path, steps=1200, pairs=[("cnn2", 1, 900)])
     assert rep["ok"] is False and rep["runs"][NAME]["outcome"] == "done"
+
+
+# ------------------------------------------------------------------ window diagnostics through the runner (switch on the command line, not in the configuration)
+def test_smoke_with_window_diagnostics_writes_the_file_and_keeps_the_switch_part_of_reuse(tmp_path):
+    rep = runner.smoke("quick", "cpu", tmp_path, steps=1200, pairs=[("cnn2", 3, 900)], resume_check=False, diagnostics=True)
+    run = tmp_path / "runs" / "smoke_quick_cnn2_n3_s900"
+    d = json.loads((run / "window_diagnostics.json").read_text())
+    assert rep["window_diagnostics"] is True and rep["ok"] is True and d["integrity"]["complete"] is True and d["totals"]["collected_transitions"] == 1200
+    cfg_json = json.loads((run / "config.json").read_text())
+    assert "window_diagnostics" not in cfg_json and "window_diagnostics" not in json.loads((run / "train_config.json").read_text())
+    # the same run requested with the switch off is another experiment (files and overhead differ): refused, not silently reused
+    off = runner.smoke("quick", "cpu", tmp_path, steps=1200, pairs=[("cnn2", 3, 900)], resume_check=False, diagnostics=False)
+    assert off["runs"]["smoke_quick_cnn2_n3_s900"]["outcome"] == "refused" and any("window diagnostics" in x for x in off["runs"]["smoke_quick_cnn2_n3_s900"]["refusal"])
+    again = runner.smoke("quick", "cpu", tmp_path, steps=1200, pairs=[("cnn2", 3, 900)], resume_check=False, diagnostics=True)
+    assert again["runs"]["smoke_quick_cnn2_n3_s900"]["outcome"] == "skipped"

@@ -431,3 +431,42 @@ def test_documentation_does_not_claim_an_unbypassable_seal():
     log = (root / "docs/RESEARCH_LOG.md").read_text(encoding="utf-8")
     assert "基于协议" in log and "不可绕过的保证" in log
     assert "protocol, not a security boundary" in (root / "docs/prereg/README.md").read_text(encoding="utf-8")
+
+
+# ------------------------------------------------------------------ the window record is invisible to the integrity machinery
+@pytest.fixture(scope="module")
+def study_diag(tmp_path_factory, declared_hard_flag):
+    results = tmp_path_factory.mktemp("study_diag")
+    assert set(runner.run_matrix(ROWS, FREEZE, results, 1, TINY, diagnostics=True).values()) == {"done"}
+    script = results / "analysis.py"
+    script.write_text("# placeholder analysis script\n")
+    return results, script
+
+
+def test_runs_with_the_window_record_pass_every_integrity_check_unchanged(study_diag, tmp_path):
+    results, script = study_diag
+    for r in ROWS:
+        assert (results / "runs" / r["run_name"] / "window_diagnostics.json").is_file()
+    problems, facts = seal.run_problems(results, ROWS, FREEZE, allow_unfrozen=True, tiny_overrides=TINY)
+    assert problems == []  # no stray-file rejection, no configuration mismatch, no current-material problem
+    dst = tmp_path / "copy"
+    shutil.copytree(results, dst)
+    m = dst / "m.json"
+    seal.write_manifest(m, build(dst, dst / "analysis.py"))
+    token = verify(dst, dst / "analysis.py", m)  # verify_manifest issues the token
+    assert token is not None
+    index = runner.final_eval(m, dst, dst / "analysis.py", rows=ROWS, freeze=FREEZE, allow_unfrozen=True, tiny=TINY, unseal=True)
+    assert set(index) == {r["run_name"] for r in ROWS}
+    # the final evaluation neither reads nor rewrites the record
+    for r in ROWS:
+        assert (dst / "runs" / r["run_name"] / "window_diagnostics.json").read_bytes() == (results / "runs" / r["run_name"] / "window_diagnostics.json").read_bytes()
+
+
+def test_adding_or_removing_the_record_after_the_fact_does_not_change_the_manifest_facts(fresh):
+    results, script = fresh
+    before = build(results, script)["runs"]
+    for r in ROWS:
+        (results / "runs" / r["run_name"] / "window_diagnostics.json").write_text("{}")
+        (results / "runs" / r["run_name"] / "window_diagnostics.partial.json").write_text("{}")
+    assert build(results, script)["runs"] == before
+    assert seal.run_problems(results, ROWS, FREEZE, allow_unfrozen=True, tiny_overrides=TINY)[0] == []

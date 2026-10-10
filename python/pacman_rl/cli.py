@@ -72,7 +72,7 @@ def cmd_train(a):
     name = a.name or f"{cfg.arch}_s{cfg.seed}"
     out = RESULTS / "runs" / name
     print(f"training {name} -> {rel(out)}\n{cfg}", flush=True)
-    print(json.dumps(train(cfg, out, log=lambda m: print(m, flush=True), resume=not a.no_resume)))
+    print(json.dumps(train(cfg, out, log=lambda m: print(m, flush=True), resume=not a.no_resume, window_diagnostics=a.window_diagnostics)))
 
 
 def cmd_eval_model(a):
@@ -190,6 +190,7 @@ def build_parser():
                  ("eps_start", float), ("eps_end", float), ("eps_frac", float), ("grad_clip", float)]:
         p.add_argument(f"--{k}", type=t)
     p.add_argument("--no-resume", action="store_true", help="ignore resume.pt and start from scratch")
+    p.add_argument("--window-diagnostics", action="store_true", help="also write the descriptive B1/B2 window record window_diagnostics.json (changes nothing the run computes)")
     p.add_argument("--no-double", dest="double", action="store_false", default=None)
     p.add_argument("--no-dueling", dest="dueling", action="store_false", default=None)
     p.set_defaults(fn=cmd_train)

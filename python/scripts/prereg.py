@@ -119,7 +119,7 @@ def finalize(run_dir: Path, name: str, cfg, attempt: int, order) -> list[str]:
     return []
 
 
-def reuse_problems(run_dir: Path, cfg) -> list[str]:
+def reuse_problems(run_dir: Path, cfg, diagnostics: bool = False) -> list[str]:
     """May an already complete run directory stand in for a run of `cfg` made now?  Only if the training configuration it was trained with is
     exactly `cfg` and the python/ tree is the one that produced it; otherwise its numbers (steps, device, throughput, memory) describe a
     different experiment."""
@@ -136,6 +136,8 @@ def reuse_problems(run_dir: Path, cfg) -> list[str]:
         diff = sorted(k for k in set(have) | set(want) if have.get(k) != want.get(k))
         if diff:
             problems.append("configuration differs: " + ", ".join(f"{k}: {have.get(k)!r} -> {want.get(k)!r}" for k in diff))
+    if diagnostics != (run_dir / "window_diagnostics.json").is_file():  # the on / off switch is part of what was run (overhead and files differ)
+        problems.append(f"window diagnostics were {'requested but the run has no window_diagnostics.json' if diagnostics else 'not requested but the run has window_diagnostics.json'}")
     cur = P.code_version(ROOT)["python_tree_sha256"]
     was = (done.get("code_version") or {}).get("python_tree_sha256")
     if was != cur:
@@ -143,7 +145,7 @@ def reuse_problems(run_dir: Path, cfg) -> list[str]:
     return problems
 
 
-def execute(name: str, cfg, results: Path, order=None, *, check_reuse: bool = False) -> str:
+def execute(name: str, cfg, results: Path, order=None, *, check_reuse: bool = False, diagnostics: bool = False) -> str:
     """Train one run from scratch.  Returns 'done' | 'skipped' | 'failed' | 'refused' ('refused': a complete run exists but was made with a
     different configuration or code version and check_reuse is set -- use another results directory)."""
     run_dir = results / "runs" / name
@@ -154,7 +156,7 @@ def execute(name: str, cfg, results: Path, order=None, *, check_reuse: bool = Fa
     try:
         if (run_dir / "run_complete.json").exists():
             if check_reuse:
-                problems = reuse_problems(run_dir, cfg)
+                problems = reuse_problems(run_dir, cfg, diagnostics)
                 if problems:
                     print(f"REFUSED {name}: the complete run in {run_dir.parent.parent.name} cannot be reused: {problems}; use a new --results-dir", flush=True)
                     return "refused"
@@ -166,7 +168,7 @@ def execute(name: str, cfg, results: Path, order=None, *, check_reuse: bool = Fa
         print(f"start {name} (attempt {attempt})", flush=True)
         env = {k: v for k, v in os.environ.items() if k not in FORBIDDEN_ENV}
         env.update({"PYTHONPATH": str(PY), "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "PACMAN_RESULTS_DIR": str(results)})
-        cmd = [sys.executable, "-m", "pacman_rl.cli", "train", *PR.train_args(cfg, name), "--no-resume"]
+        cmd = [sys.executable, "-m", "pacman_rl.cli", "train", *PR.train_args(cfg, name), "--no-resume", *(["--window-diagnostics"] if diagnostics else [])]
         with open(run_dir / "stdout.log", "w", encoding="utf-8") as f:
             rc = subprocess.run(cmd, cwd=PY, env=env, stdout=f, stderr=subprocess.STDOUT).returncode
         problems = [f"training process exited with code {rc}"] if rc else finalize(run_dir, name, cfg, attempt, order)
@@ -217,11 +219,11 @@ def preflight(freeze: dict, workers: int | None, *, allow_unfrozen: bool, root: 
     return w
 
 
-def run_matrix(rows, freeze, results: Path, workers: int, overrides: dict | None = None, only=None) -> dict[str, str]:
+def run_matrix(rows, freeze, results: Path, workers: int, overrides: dict | None = None, only=None, diagnostics: bool = False) -> dict[str, str]:
     overrides = overrides or {}
     jobs = [(r["run_name"], PR.train_config(r, freeze, **overrides), r["order"]) for r in rows if not only or r["run_name"] in only]
     with ThreadPoolExecutor(workers) as ex:  # ex.map starts the jobs in matrix order
-        outcomes = list(ex.map(lambda j: execute(j[0], j[1], results, j[2]), jobs))
+        outcomes = list(ex.map(lambda j: execute(j[0], j[1], results, j[2], diagnostics=diagnostics), jobs))
     return {j[0]: o for j, o in zip(jobs, outcomes)}
 
 
@@ -234,7 +236,7 @@ PROFILES = {
 }
 
 
-def smoke(profile: str, device: str, results: Path, steps=None, pairs=None, workers=None, resume_check=True) -> dict:
+def smoke(profile: str, device: str, results: Path, steps=None, pairs=None, workers=None, resume_check=True, diagnostics: bool = False) -> dict:
     reject_env()
     prof = PROFILES[profile]
     freeze, rows = PR.load_freeze(), PR.load_matrix()
@@ -250,12 +252,12 @@ def smoke(profile: str, device: str, results: Path, steps=None, pairs=None, work
 
     def timed(j):
         t = time.time()
-        out = execute(j[0], j[1], results, check_reuse=True)
+        out = execute(j[0], j[1], results, check_reuse=True, diagnostics=diagnostics)
         return out, round(time.time() - t, 1)
 
     with ThreadPoolExecutor(n_workers) as ex:
         outcomes = list(ex.map(timed, jobs))
-    report = {"profile": profile, "device": device, "workers": n_workers, "note": "smoke runs only: scores are NOT used to choose anything",
+    report = {"profile": profile, "device": device, "workers": n_workers, "window_diagnostics": diagnostics, "note": "smoke runs only: scores are NOT used to choose anything",
               "runs": {}, "wall_seconds": None}
     from pacman_rl.evalrun import evaluate_checkpoint
 
@@ -264,7 +266,7 @@ def smoke(profile: str, device: str, results: Path, steps=None, pairs=None, work
         run_dir = results / "runs" / name
         entry = {"outcome": outcome, "invocation_seconds": seconds}
         if outcome == "refused":
-            entry["refusal"] = reuse_problems(run_dir, cfg)
+            entry["refusal"] = reuse_problems(run_dir, cfg, diagnostics)
         elif outcome == "done" or (run_dir / "run_complete.json").exists():
             done = json.loads((run_dir / "run_complete.json").read_text())
             s = done["summary"]
@@ -440,6 +442,7 @@ def main(argv=None):
     p.add_argument("--workers", type=int)
     p.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS)
     p.add_argument("--only", nargs="*")
+    p.add_argument("--window-diagnostics", action="store_true", help="write the descriptive B1/B2 window record next to every run (changes nothing the run computes)")
     p = sub.add_parser("manifest", help="verify that all 30 runs are complete and untouched; write the integrity manifest")
     p.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS)
     p.add_argument("--analysis-script", type=Path, required=True)
@@ -466,6 +469,7 @@ def main(argv=None):
     p.add_argument("--steps", type=int)
     p.add_argument("--workers", type=int)
     p.add_argument("--pairs", nargs="*", help="arch:n:seed ... (default: the profile's)")
+    p.add_argument("--window-diagnostics", action="store_true", help="smoke run with the window record on (use a separate --results-dir from the off run)")
     a = ap.parse_args(argv)
     freeze = PR.load_freeze()
     if a.cmd == "check":
@@ -478,7 +482,7 @@ def main(argv=None):
         return 0
     if a.cmd == "run":
         workers = preflight(freeze, a.workers, allow_unfrozen=False)
-        out = run_matrix(PR.load_matrix(), freeze, a.results_dir, workers, only=a.only)
+        out = run_matrix(PR.load_matrix(), freeze, a.results_dir, workers, only=a.only, diagnostics=a.window_diagnostics)
         print(json.dumps(out, indent=1))
         return 0 if all(v in ("done", "skipped") for v in out.values()) else 1
     if a.cmd == "manifest":
@@ -514,7 +518,7 @@ def main(argv=None):
         return 0
     if a.cmd == "smoke":
         pairs = [(x.split(":")[0], int(x.split(":")[1]), int(x.split(":")[2])) for x in a.pairs] if a.pairs else None
-        rep = smoke(a.profile, a.device, a.results_dir, a.steps, pairs, a.workers)
+        rep = smoke(a.profile, a.device, a.results_dir, a.steps, pairs, a.workers, diagnostics=a.window_diagnostics)
         print(json.dumps({k: v for k, v in rep.items() if k != "runs"}, indent=1))
         return 0 if rep["ok"] else 1  # every run done / reused AND the interrupt-resume check passed
     return 2
