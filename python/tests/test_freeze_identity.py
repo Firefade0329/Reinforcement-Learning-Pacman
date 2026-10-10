@@ -265,3 +265,12 @@ def test_evaluation_machine_evidence_is_saved_separately_and_only_once(repo):
     assert "utc" in rec and "code_version" in rec and isinstance(rec["environment"], dict)
     with pytest.raises(runner.Refused, match="one-shot"):
         runner.save_final_eval_environment(results, repo.cfg, ev, root=repo.root)
+
+
+def test_the_runner_gate_does_not_depend_on_the_callers_environment(repo, monkeypatch):
+    """Regression for the acceptance.sh --quick failure: the suite must give the same answer with PACMAN_RESULTS_DIR exported by the caller."""
+    repo.freeze()
+    assert preflight(repo) == 2  # the conftest fixture removed the variable for this module...
+    monkeypatch.setenv("PACMAN_RESULTS_DIR", "/nonexistent")  # ...and a test that sets it itself still sees the refusal
+    with pytest.raises(runner.Refused, match="PACMAN_RESULTS_DIR"):
+        preflight(repo)
