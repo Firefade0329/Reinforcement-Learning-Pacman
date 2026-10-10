@@ -171,8 +171,11 @@ reset) also contains such a deviation after a greedy start (B2, a descriptive co
 * The recorder uses only arrays the training loop already has; it calls no model, draws no random number and adds nothing to the replay. The wiring is
   tested for exact equality of the run with and without it on the CPU; the cost on the GPU machine is NOT estimated here and must be measured
   (acceptance: median wall-clock overhead <= 5 %, extra main memory <= 16 MiB per process; see `FREEZE_CHECKLIST.md`).
-* After the 30 runs: `python python/scripts/window_diagnostics_summary.py seal` (separate `window_diagnostics_seal.json`; it is not part of the
-  evaluation seal or the analysis input), then `summarize --out-dir ...` for the central description: per configuration the five per-run rates, mean and
+* After the 30 runs: `python python/scripts/window_diagnostics_summary.py seal --freeze-manifest docs/prereg/freeze_manifest.json --freeze-commit <F from the
+  external freeze record>` (separate `window_diagnostics_seal.json`; it is not part of the evaluation seal or the analysis input; it refuses unless the manifest
+  freezes the two diagnostic code files, their current bytes match, HEAD is exactly F with the usual C -> F relation and a clean tree, every record says
+  `meta.git_sha` = F, has the fixed header, a verified real replay emission and only finite numbers, `1e999` included), then `summarize` with the same two
+  identity arguments and `--out-dir ...` (it re-verifies manifest hash, F, code hashes sealed = frozen = current, the 30 file hashes and every record) for the central description: per configuration the five per-run rates, mean and
   sd (ddof=1) over the runs with a defined rate (k of 5) and the pooled ratio as a separate quantity, per `h` and over the 15 start bins. No tests,
   intervals or rankings; findings suggested by it are post-hoc explanations.
 

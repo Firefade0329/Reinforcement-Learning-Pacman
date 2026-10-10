@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Central DESCRIPTIVE summary of the window records (B1 / B2) of the 30 preregistered runs.
 
-  python window_diagnostics_summary.py seal      --results-dir results_prereg [--out results_prereg/window_diagnostics_seal.json]
-  python window_diagnostics_summary.py summarize --results-dir results_prereg [--seal ...] --out-dir results_prereg/window_diagnostics_summary
+  python window_diagnostics_summary.py seal      --results-dir results_prereg --freeze-manifest docs/prereg/freeze_manifest.json --freeze-commit <F> [--out ...]
+  python window_diagnostics_summary.py summarize --results-dir results_prereg --freeze-manifest ... --freeze-commit <F> [--seal ...] --out-dir results_prereg/window_diagnostics_summary
+
+Both commands first check the frozen identity (the manifest freezes the two diagnostic code files, their current bytes match, HEAD is exactly the external F, C is
+an ancestor, python/ is identical, the C -> F differences are the six freeze-material files, the tracked tree is clean); a failure refuses and publishes nothing.
 
 Reads ONLY the 30 ``runs/<run_name>/window_diagnostics.json`` files (and the matrix for the run list): no evaluation file, checkpoint, test
 seed, summary.json, configuration or analysis input.  The seal ``window_diagnostics_seal.json`` is separate from the evaluation seal and
@@ -18,6 +21,7 @@ import hashlib
 import json
 import math
 import os
+import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -28,7 +32,12 @@ ROOT = Path(__file__).resolve().parents[2]
 MATRIX = ROOT / "docs" / "prereg" / "matrix.csv"
 MATRIX_SHA256 = "5cbd4e7b2cf79f65c96180acfc61b1914fe2e8521c036218bc7c9a4db59f0dfe"
 CODE_FILES = ("python/pacman_rl/window_diag.py", "python/scripts/window_diagnostics_summary.py")
+FREEZE_MATERIALS = ("docs/prereg/frozen_config_v0.3.2.json", "docs/prereg/freeze_manifest.json", "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md",
+                    "docs/prereg/ANALYSIS_SPEC_v0.3.2.md", "docs/prereg/CLAUDE_HANDOFF_v0.3.2.md", "docs/prereg/FREEZE_CHECKLIST.md")  # mirror of provenance.FREEZE_MATERIALS
+HEX = set("0123456789abcdef")
 SEAL_SCHEMA, SUMMARY_SCHEMA, FILE_SCHEMA = "window-diagnostics-seal-1", "window-diagnostics-summary-1", "window-diagnostics-1"
+HEADER = {"definition_version": "1", "counting_source": "emitted_once", "indicator": "action_mismatch_to_selected_greedy", "descriptive_only": True,
+          "n_envs": 8, "gamma": 0.99, "bin_size": 20_000}  # the fixed header of every record
 BUDGET = 300_000
 DIAG = "window_diagnostics.json"
 
@@ -52,18 +61,32 @@ def _reject_constant(s):
     raise DiagError(f"non-finite JSON constant {s}")
 
 
+def _finite_float(s):
+    v = float(s)
+    if not math.isfinite(v):  # 1e999 parses to infinity
+        raise DiagError(f"non-finite number {s}")
+    return v
+
+
 def read_diag(path: Path) -> dict:
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8"), parse_constant=_reject_constant)
+        return json.loads(Path(path).read_text(encoding="utf-8"), parse_constant=_reject_constant, parse_float=_finite_float)
     except (OSError, ValueError) as e:
         raise DiagError(f"{path.name}: unreadable ({e})")
 
 
-def file_problems(doc: dict, row: dict, budget: int) -> list[str]:
+def file_problems(doc: dict, row: dict, budget: int, freeze_commit: str | None = None) -> list[str]:
     p = []
     if not isinstance(doc, dict) or doc.get("schema_version") != FILE_SCHEMA:
         return [f"schema_version is not {FILE_SCHEMA}"]
+    for k, want in HEADER.items():
+        if doc.get(k) != want or type(doc.get(k)) is not type(want):
+            p.append(f"header {k} is {doc.get(k)!r}, expected {want!r}")
     meta = doc.get("meta") or {}
+    if freeze_commit is not None and meta.get("git_sha") != freeze_commit:
+        p.append(f"meta.git_sha is {meta.get('git_sha')!r}, the freeze commit F is {freeze_commit}")
+    if (doc.get("integrity") or {}).get("verified_against_replay") is not True:
+        p.append("the recorder was not verified against the real replay emission (verified_against_replay is not true)")
     for k, want in (("run_name", row["run_name"]), ("arch", row["arch"]), ("n_step", row["n_step"]), ("run_seed", row["seed"])):
         if meta.get(k) != want:
             p.append(f"meta.{k} is {meta.get(k)!r}, the matrix says {want!r}")
@@ -78,7 +101,59 @@ def file_problems(doc: dict, row: dict, budget: int) -> list[str]:
     return p
 
 
-def build_seal(results_dir: Path, rows: list[dict], budget: int | None = None) -> dict:
+def _git(root: Path, *args: str, allow_fail=False):
+    try:
+        r = subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise DiagError(f"git is unavailable or timed out ({' '.join(args[:2])}): {e}")
+    if r.returncode != 0 and not allow_fail:
+        raise DiagError(f"git {' '.join(args[:3])} failed: {r.stderr.strip()[:200]}")
+    return r
+
+
+def freeze_context(manifest_path: Path, root: Path, external_f: str) -> dict:
+    """The frozen identity the auxiliary tools rely on: the manifest (formal, complete) and its two frozen diagnostic-code hashes, the external F, and the current
+    repository being exactly F (C an ancestor, equal python/ trees, C -> F differences within the six freeze-material files, clean tracked tree)."""
+    root = Path(root)
+    if not (isinstance(external_f, str) and len(external_f) == 40 and set(external_f) <= HEX):
+        raise DiagError("--freeze-commit must be the full 40-hex freeze commit F from the external freeze record")
+    try:
+        manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"), parse_constant=_reject_constant, parse_float=_finite_float)
+    except (OSError, ValueError) as e:
+        raise DiagError(f"freeze manifest unreadable: {e}")
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != "prereg-freeze-1" or manifest.get("synthetic") is not False or manifest.get("complete") is not True:
+        raise DiagError("the freeze manifest is not a complete formal prereg-freeze-1 manifest")
+    c = manifest.get("code_commit")
+    if not (isinstance(c, str) and len(c) == 40 and set(c) <= HEX):
+        raise DiagError("the freeze manifest has no full code_commit")
+    files = manifest.get("frozen_files") if isinstance(manifest.get("frozen_files"), dict) else {}
+    frozen_code = {}
+    for rel in CODE_FILES:
+        want = files.get(rel)
+        if not (isinstance(want, str) and len(want) == 64 and set(want) <= HEX):
+            raise DiagError(f"the freeze manifest does not freeze {rel}")
+        actual = sha256_file(root / rel) if (root / rel).is_file() else None
+        if actual != want:
+            raise DiagError(f"{rel}: the current code {actual} differs from the frozen hash {want}")
+        frozen_code[rel] = want
+    head = _git(root, "rev-parse", "HEAD").stdout.strip()
+    if head != external_f:
+        raise DiagError(f"HEAD {head} is not the external freeze commit F {external_f}")
+    if _git(root, "rev-parse", "--verify", f"{c}^{{commit}}", allow_fail=True).stdout.strip() != c:
+        raise DiagError("the code commit C of the manifest is not a commit of this repository")
+    if _git(root, "merge-base", "--is-ancestor", c, "HEAD", allow_fail=True).returncode != 0:
+        raise DiagError("the code commit C is not an ancestor of F")
+    if _git(root, "rev-parse", f"{c}:python").stdout.strip() != _git(root, "rev-parse", "HEAD:python").stdout.strip():
+        raise DiagError("the python/ tree at F differs from the one at C")
+    outside = sorted(x for x in _git(root, "diff", "--name-only", c, "HEAD").stdout.splitlines() if x and x not in FREEZE_MATERIALS)
+    if outside:
+        raise DiagError(f"files outside the six freeze-material files differ between C and F: {outside[:5]}")
+    if [x for x in _git(root, "status", "--porcelain", "--untracked-files=no").stdout.splitlines() if x.strip()]:
+        raise DiagError("the working tree has uncommitted changes to tracked files")
+    return {"code_commit": c, "freeze_commit": external_f, "freeze_manifest_sha256": sha256_file(manifest_path), "frozen_code_sha256": frozen_code}
+
+
+def build_seal(results_dir: Path, rows: list[dict], freeze: dict, budget: int | None = None) -> dict:
     budget = BUDGET if budget is None else budget
     runs = Path(results_dir) / "runs"
     files, problems = {}, []
@@ -88,19 +163,26 @@ def build_seal(results_dir: Path, rows: list[dict], budget: int | None = None) -
             problems.append(f"{r['run_name']}: {DIAG} missing")
             continue
         try:
-            problems += [f"{r['run_name']}: {x}" for x in file_problems(read_diag(f), r, budget)]
+            problems += [f"{r['run_name']}: {x}" for x in file_problems(read_diag(f), r, budget, freeze["freeze_commit"])]
         except DiagError as e:
             problems.append(f"{r['run_name']}: {e}")
         files[f"{r['run_name']}/{DIAG}"] = sha256_file(f)
     if problems:
         raise DiagError("not sealable:\n  - " + "\n  - ".join(problems))
     return {"schema_version": SEAL_SCHEMA, "matrix_sha256": MATRIX_SHA256, "runs": [r["run_name"] for r in rows], "files": files,
-            "transition_budget": budget, "code_sha256": {rel: sha256_file(ROOT / rel) for rel in CODE_FILES}, "descriptive_only": True}
+            "transition_budget": budget, "code_commit": freeze["code_commit"], "freeze_commit": freeze["freeze_commit"],
+            "freeze_manifest_sha256": freeze["freeze_manifest_sha256"], "code_sha256": dict(freeze["frozen_code_sha256"]), "descriptive_only": True}
 
 
-def verify_seal(results_dir: Path, seal: dict, rows: list[dict]) -> None:
+def verify_seal(results_dir: Path, seal: dict, rows: list[dict], freeze: dict | None = None) -> None:
     if seal.get("schema_version") != SEAL_SCHEMA or seal.get("runs") != [r["run_name"] for r in rows] or seal.get("matrix_sha256") != MATRIX_SHA256:
         raise DiagError("the seal is not a window-diagnostics seal for this matrix")
+    if freeze is not None:  # frozen identity: manifest, F, C and the code hashes sealed == frozen == current
+        for k in ("code_commit", "freeze_commit", "freeze_manifest_sha256"):
+            if seal.get(k) != freeze[k]:
+                raise DiagError(f"the seal's {k} {seal.get(k)!r} differs from the frozen {freeze[k]!r}")
+        if seal.get("code_sha256") != freeze["frozen_code_sha256"]:
+            raise DiagError("the sealed code hashes differ from the frozen / current diagnostic code")
     if set(seal.get("files", {})) != {f"{r['run_name']}/{DIAG}" for r in rows}:
         raise DiagError("the sealed file set is not exactly the 30 window records")
     for rel, want in seal["files"].items():
@@ -156,9 +238,13 @@ def group_summary(docs: list[dict], getter) -> dict:
     return out
 
 
-def summarize(results_dir: Path, seal: dict, rows: list[dict]) -> dict:
-    verify_seal(results_dir, seal, rows)
+def summarize(results_dir: Path, seal: dict, rows: list[dict], freeze: dict | None = None, budget: int | None = None) -> dict:
+    verify_seal(results_dir, seal, rows, freeze)
     docs = {r["run_name"]: read_diag(Path(results_dir) / "runs" / r["run_name"] / DIAG) for r in rows}
+    if freeze is not None:  # structure and identity of every record again (a record can be fine in bytes and wrong in content)
+        bad = [f"{r['run_name']}: {x}" for r in rows for x in file_problems(docs[r["run_name"]], r, BUDGET if budget is None else budget, freeze["freeze_commit"])]
+        if bad:
+            raise DiagError("the sealed records are not acceptable:\n  - " + "\n  - ".join(bad))
     configs = {}
     for r in rows:
         configs.setdefault((r["arch"], r["n_step"]), []).append(r)
@@ -172,8 +258,9 @@ def summarize(results_dir: Path, seal: dict, rows: list[dict]) -> dict:
              "pending_total": value_summary([d["pending_total"] for d in ds]),
              "death_events": value_summary([d["totals"]["death_events"] for d in ds])}
         out[f"{arch}.n{n}"] = c
-    return {"schema_version": SUMMARY_SCHEMA, "descriptive_only": True, "no_hypothesis_tests": True,
+    return {"schema_version": SUMMARY_SCHEMA, "descriptive_only": True, "no_hypothesis_tests": True, "definition_version": HEADER["definition_version"],
             "definition": "action_mismatch_to_selected_greedy; counts are emitted windows (once), not replay samples", "configs": out,
+            "identity": {k: seal.get(k) for k in ("code_commit", "freeze_commit", "freeze_manifest_sha256")},
             "inputs": {"files": seal["files"], "seal_code_sha256": seal.get("code_sha256")}}
 
 
@@ -208,28 +295,33 @@ def write_text_atomic(path: Path, text: str) -> None:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("seal")
-    p.add_argument("--results-dir", type=Path, default=ROOT / "results_prereg")
-    p.add_argument("--out", type=Path)
-    p = sub.add_parser("summarize")
-    p.add_argument("--results-dir", type=Path, default=ROOT / "results_prereg")
-    p.add_argument("--seal", type=Path)
-    p.add_argument("--out-dir", type=Path, required=True)
+    for name in ("seal", "summarize"):
+        p = sub.add_parser(name)
+        p.add_argument("--results-dir", type=Path, default=ROOT / "results_prereg")
+        p.add_argument("--freeze-manifest", type=Path, required=True, help="the committed freeze_manifest.json (it freezes the two diagnostic code files)")
+        p.add_argument("--freeze-commit", required=True, help="the full freeze commit F from the external freeze record; HEAD must be exactly this commit")
+        p.add_argument("--project-root", type=Path, default=ROOT)
+        if name == "seal":
+            p.add_argument("--out", type=Path)
+        else:
+            p.add_argument("--seal", type=Path)
+            p.add_argument("--out-dir", type=Path, required=True)
     a = ap.parse_args(argv)
     try:
         rows = load_matrix()
+        freeze = freeze_context(a.freeze_manifest, a.project_root, a.freeze_commit)
         if a.cmd == "seal":
             out = a.out or a.results_dir / "window_diagnostics_seal.json"
             if out.exists():
                 raise DiagError(f"{out.name} already exists; the window records are sealed once")
-            write_text_atomic(out, json.dumps(build_seal(a.results_dir, rows), indent=1, sort_keys=True, allow_nan=False))
+            write_text_atomic(out, json.dumps(build_seal(a.results_dir, rows, freeze), indent=1, sort_keys=True, allow_nan=False))
             print(f"window diagnostics seal written: {sha256_file(out)}")
             return 0
         seal_path = a.seal or a.results_dir / "window_diagnostics_seal.json"
         seal = json.loads(seal_path.read_text(encoding="utf-8"))
         if a.out_dir.exists():
             raise DiagError("output directory already exists")
-        summary = summarize(a.results_dir, seal, rows)
+        summary = summarize(a.results_dir, seal, rows, freeze)
         summary["created_utc"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         summary["seal_sha256"] = sha256_file(seal_path)
         a.out_dir.parent.mkdir(parents=True, exist_ok=True)
