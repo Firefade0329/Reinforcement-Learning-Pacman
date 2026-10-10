@@ -225,7 +225,7 @@ def smoke(profile: str, device: str, results: Path, steps=None, pairs=None, work
         cfg = PR.train_config(template[(arch, n)], freeze, seed=seed, device=device, val_set=freeze["smoke_val_set"],
                               total_env_steps=steps or prof["steps"], learn_start=prof["learn_start"], buffer=prof["buffer"],
                               eval_every=prof["eval_every"])
-        jobs.append((f"smoke_{arch}_n{n}_s{seed}", cfg))
+        jobs.append((f"smoke_{profile}_{arch}_n{n}_s{seed}", cfg))  # profile in the name: quick and load never share a run
     t0 = time.time()
     with ThreadPoolExecutor(workers or prof["workers"]) as ex:
         outcomes = list(ex.map(lambda j: execute(j[0], j[1], results), jobs))
@@ -254,11 +254,11 @@ def smoke(profile: str, device: str, results: Path, steps=None, pairs=None, work
         report["runs"][name] = entry
     report["initial_hash_pairs_equal"] = {f"{a}_s{s}": (len(set(v.values())) == 1 and len(v) == 2) for (a, s), v in inits.items() if len(v) == 2}
     if resume_check:
-        report["interrupt_resume_check"] = interrupt_resume_check(results / "interrupt_check")
+        report["interrupt_resume_check"] = interrupt_resume_check(results / f"interrupt_check_{profile}")
     report["wall_seconds"] = round(time.time() - t0, 1)
     report["environment"] = P.environment_info(device if device != "auto" else "cpu")
     results.mkdir(parents=True, exist_ok=True)
-    (results / "smoke_report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
+    (results / f"smoke_report_{profile}.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
     return report
 
 

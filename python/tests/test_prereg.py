@@ -202,9 +202,9 @@ def test_smoke_driver_reports_throughput_memory_hash_pairs_and_resume(tmp_path):
         assert v["env_steps"] == 1200 and v["updates"] > 0 and v["env_steps_per_second"] > 0 and v["peak_working_set_mb"] > 0 and v["peak_memory_error"] is None and (sys.platform != "win32" or v["peak_commit_mb"] > 0)
         assert v["cpu_eval_10_episodes"]["last"]["n_records"] == 10 and v["cpu_eval_10_episodes"]["best"]["n_records"] == 10
     assert rep["interrupt_resume_check"]["ok"] is True
-    text = (tmp_path / "smoke_report.json").read_text()
+    text = (tmp_path / "smoke_report_quick.json").read_text()
     assert str(tmp_path) not in text and set(rep["environment"]) == set(P.ENV_KEYS)
-    cfg = json.loads((tmp_path / "runs" / "smoke_cnn2_n1_s900" / "config.json").read_text())
+    cfg = json.loads((tmp_path / "runs" / "smoke_quick_cnn2_n1_s900" / "config.json").read_text())
     assert cfg["seed"] == 900 and cfg["val_set"] == "smoke_eval"
 
 
@@ -240,3 +240,30 @@ def test_completed_run_has_the_contract_files(two_runs):
         assert len(s["initial_state_dict_sha256"]) == 64
         assert s["checkpoints"]["last"] == {"step": 96, "weights_sha256": json.loads((d / "run_complete.json").read_text())["last_state_sha256"]}
         assert s["checkpoints"]["best"]["step"] in s["validation_steps"]
+
+
+# ------------------------------------------------------------------ smoke profiles must not share runs or reports
+def _small_load_profile(monkeypatch):
+    """The real load profile fills a 100000-sample buffer; a miniature with the same pairs keeps the test quick."""
+    monkeypatch.setitem(runner.PROFILES, "load", {**runner.PROFILES["load"], "steps": 1200, "learn_start": 500, "buffer": 4000, "eval_every": 1000, "workers": 1})
+
+
+def test_quick_then_load_in_the_same_results_dir_runs_both_and_keeps_both_reports(tmp_path, monkeypatch):
+    _small_load_profile(monkeypatch)
+    pair = [("cnn2", 1, 900)]  # the same (architecture, n_step, seed) in both profiles: the case that used to collide
+    quick = runner.smoke("quick", "cpu", tmp_path, steps=1200, pairs=pair)
+    quick_report = tmp_path / "smoke_report_quick.json"
+    before = quick_report.read_bytes()
+    load = runner.smoke("load", "cpu", tmp_path, pairs=pair)
+    # the load run was really trained, not skipped as "already complete" ...
+    assert {v["outcome"] for v in load["runs"].values()} == {"done"} and {v["outcome"] for v in quick["runs"].values()} == {"done"}
+    # ... in its own run directory ...
+    assert (tmp_path / "runs" / "smoke_quick_cnn2_n1_s900" / "run_complete.json").exists()
+    assert (tmp_path / "runs" / "smoke_load_cnn2_n1_s900" / "run_complete.json").exists()
+    # ... with the profile's own configuration, and the quick report is untouched
+    assert json.loads((tmp_path / "runs" / "smoke_load_cnn2_n1_s900" / "config.json").read_text())["learn_start"] == 500
+    assert json.loads((tmp_path / "runs" / "smoke_quick_cnn2_n1_s900" / "config.json").read_text())["buffer"] == 4000
+    assert quick_report.read_bytes() == before
+    assert json.loads(before)["profile"] == "quick" and json.loads((tmp_path / "smoke_report_load.json").read_text())["profile"] == "load"
+    assert not (tmp_path / "smoke_report.json").exists()  # the ambiguous shared name is gone
+    assert (tmp_path / "interrupt_check_quick").exists() and (tmp_path / "interrupt_check_load").exists()
