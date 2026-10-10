@@ -261,7 +261,11 @@ def test_outputs_are_complete_atomic_and_never_overwritten(cache, tmp_path_facto
     assert not list(out.parent.glob(".analysis_tmp_*"))
 
 
-def test_best_minus_last_uses_the_same_resampling_and_hard_is_optional(tmp_path):
+def test_hard_endpoint_is_optional_and_never_gets_a_second_confirmatory_verdict(tmp_path):
+    """(Renamed: this test is about the optional hard scenario only; the best-minus-last resampling is tested in test_prereg_analysis_expected.py.)"""
+    off = Study(tmp_path / "off", d=const_d(10, 20, 30))
+    an_off, _ = run(tmp_path, off, "off_out")
+    assert "last_hard" not in an_off["endpoints"] and an_off["integrity"]["hard_enabled"] is False
     # hard enabled: all 30 last/hard files, own endpoint; scores differ from standard so the endpoint is distinguishable
     st = Study(tmp_path / "p", d=const_d(10, 20, 30), hard=True, hard_d=const_d(1, 2, 3))
     an, _ = run(tmp_path, st)
