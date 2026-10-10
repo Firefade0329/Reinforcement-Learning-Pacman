@@ -64,6 +64,16 @@ process baseline (its 4000-sample buffer is only about 41 MB). The `load` runs p
 commit, which is the same baseline plus the roughly 1.0 GB a 100000-sample uint8 replay buffer needs, so the two profiles agree.
 Do not read the `quick` numbers as the memory need of a formal run.
 
+**What the quick profile is.** The quick driver sets `learn_start=500`, `buffer=4000` and `eval_every=1000` explicitly, so within
+its 2000 steps the runs DO perform gradient updates (`actual_updates` in each run's `summary.json` must be greater than 0; keep the
+effective smoke configuration of every run with the report). It exercises a short pipeline only: it is not a filled replay buffer and
+says nothing about stability over 300000 steps.
+
+**How the load profile differs from the formal protocol.** It is not a scaled-down copy of it. Validation uses the `smoke_eval` seeds with
+10 episodes per validation (formal: 15 validations x 50 episodes = 750), and `eps_frac=0.4` together with 110000 steps anneals epsilon over
+44000 steps (formal: over 120000 steps). Treat its throughput, memory and the extrapolated durations (res8 300000 steps about 55 min; the
+30 trainings about 11-16 h) as rough planning figures; they must be re-measured on the frozen candidate version before the freeze.
+
 ## Run directory layout (formal runs, `results_prereg/runs/<run_name>/`)
 
 `config.json` (merged effective configuration: every CSV column, the five CSV-external settings, the frozen supplementary values,
