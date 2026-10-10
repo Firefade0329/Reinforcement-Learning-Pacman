@@ -51,7 +51,7 @@ note, power / sleep settings confirmation.
 
 | item | status | what is needed |
 |---|---|---|
-| freeze identity | open | the full commit SHA of the frozen version, a clean tree, hashes of the frozen documents / matrix / configuration / analysis script / dependency lock, written into a timestamped freeze record that cannot be modified silently; a change after the freeze needs a stated reason and time |
+| freeze identity | open (mechanism implemented) | the code commit C in `code_commit` and the freeze commit F = HEAD (see `docs/prereg/README.md`); the external freeze record keeps F; a clean tree, hashes of the frozen documents / matrix / configuration / analysis script / dependency lock, written into a timestamped freeze record that cannot be modified silently; a change after the freeze needs a stated reason and time |
 | re-check before unsealing | open | all 30 runs complete (exactly 300000 steps each), checkpoints and configurations re-verified against the freeze, the 15 initial-hash pairs on record, the evaluation seal and analysis hashes matching -- immediately before the sealed seeds are read |
 | 15 initial-hash pairs, before the first formal training | open | see section B (construct-only check on the frozen machine and dependencies, not a result of the 30 trainings) |
 | software and command record | open | Python, torch / CUDA, NumPy and the analysis dependencies locked; devices and thread counts for training, validation and the final evaluation; determinism / TF32 and related switches; the exact commands, the effective configuration and the worker count; nothing may rely on an unrecorded default |

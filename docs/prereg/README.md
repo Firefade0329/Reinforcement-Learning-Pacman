@@ -96,3 +96,14 @@ It reads only the files named by the freeze manifest and the evaluation seal, va
 synthetic studies only (`python/tests/test_prereg_analysis.py`, fixtures F1-F8 and malformed inputs E1-E13 of the specification
 section 8, with hand-derived expected values); no real or old result is ever read. The human sign-off fields (reviewer, date, what was
 checked, freeze approval) are intentionally not filled in by the code or its author.
+
+## Freeze identity: code commit C and freeze commit F
+
+The frozen configuration records `code_commit` in a tracked file, so it cannot name the commit that contains it. The study therefore
+uses two commits: **C**, the code commit named by `code_commit`, and **F**, the commit the runs are made from (`HEAD`), which is C or a
+descendant that adds only freeze material (the frozen configuration, `freeze_manifest.json`, the preregistration / specification /
+hand-over texts and the checklist). Procedure: commit the code (C); put C into `code_commit`, prepare the manifest and texts; commit them
+(F). `prereg.py run` and the final evaluation require: C exists and is an ancestor of (or equal to) HEAD, the `python/` tree is identical at C
+and HEAD, `matrix.csv` is unchanged, every file that differs between C and HEAD is freeze material, and the tracked working tree is clean.
+Runs store C (`config.json`, evaluation `meta.code_commit`, `run_complete.json`) and F (`run_complete.json` `freeze_commit`, `code_version.json`
+`git_sha`); the external freeze record keeps F. No field was added to the frozen configuration.

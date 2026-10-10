@@ -67,7 +67,7 @@ def run_problems(results_dir: Path, rows, freeze, *, allow_unfrozen: bool, tiny_
         stray = [p.name for p in run.iterdir() if p.name.startswith(("test", "final")) or p.name.startswith("resume") or p.name in ("last", "best")]
         if stray:
             problems.append(f"{name}: forbidden files present before the final evaluation: {stray}")
-        want = PR.effective_config(r, freeze, PR.train_config(r, freeze, **(tiny_overrides or {})), done["code_version"]["git_sha"],
+        want = PR.effective_config(r, freeze, PR.train_config(r, freeze, **(tiny_overrides or {})), done["code_commit"],
                                    PR.file_sha256(PR.FREEZE_FILE))
         if done["config"] != want or json.loads((run / "config.json").read_text()) != want:
             problems.append(f"{name}: recorded configuration differs from the one derived from the matrix row")
@@ -78,7 +78,7 @@ def run_problems(results_dir: Path, rows, freeze, *, allow_unfrozen: bool, tiny_
             elif _sha_file(f) != done[f"{label}_file_sha256"] or _state_sha(f) != done[f"{label}_state_sha256"]:
                 problems.append(f"{name}: {label}.pt does not match the hash recorded when the run completed (modified?)")
         cv = done["code_version"]
-        codes[name], trees[name], envs[name] = (cv["git_sha"], cv["git_dirty"]), cv["python_tree_sha256"], done["environment"]
+        codes[name], trees[name], envs[name] = (done["code_commit"], cv["git_dirty"], done["freeze_commit"]), cv["python_tree_sha256"], done["environment"]
         facts[name] = {"order": r["order"], "arch": r["arch"], "n_step": r["n_step"], "seed": r["seed"], "attempt": done["attempt"],
                        "init_online_hash": done["init_online_hash"], "run_complete_sha256": _sha_file(done_file),
                        **{k: done[k] for k in ("last_file_sha256", "best_file_sha256", "last_state_sha256", "best_state_sha256")}}
@@ -86,14 +86,14 @@ def run_problems(results_dir: Path, rows, freeze, *, allow_unfrozen: bool, tiny_
         hs = {f["init_online_hash"] for f in facts.values() if (f["arch"], f["seed"]) == key}
         if len(hs) != 1:
             problems.append(f"{key[0]} seed {key[1]}: n_step=1 and n_step=3 did not start from the same initial weights")
-    if len(set(codes.values())) > 1 or len(set(trees.values())) > 1:
-        problems.append("runs were produced by different code versions")
+    if len({c[2] for c in codes.values()}) > 1 or len({c[0] for c in codes.values()}) > 1 or len(set(trees.values())) > 1:
+        problems.append("runs were produced by different code versions (code commit, freeze commit or python/ tree differ between runs)")
     if len({json.dumps(e, sort_keys=True) for e in envs.values()}) > 1:
         problems.append("runs were produced in different software/GPU environments")
     if not allow_unfrozen:
         frozen = freeze.get("code_commit")
         if any(c[0] != frozen or c[1] for c in codes.values()):
-            problems.append("runs were not produced by the frozen commit with a clean working tree")
+            problems.append("runs were not produced from the frozen code commit with a clean working tree")
     return problems, facts
 
 
@@ -190,19 +190,25 @@ def build_evaluation_seal(results_dir, rows, freeze, pretest_manifest, freeze_ma
 
 
 def build_freeze_manifest(root, matrix_path, config_path, analysis_script, dependency_lock, extra_frozen=(), *, spec_version="0.3.2") -> dict:
-    """The freeze manifest of ANALYSIS_SPEC section 1.1.  `project_root` is written as "." (resolved against an explicit
-    --project-root when the analysis runs) so that no machine path is committed.  Requires a clean tree."""
-    from .provenance import code_version
+    """The freeze manifest of ANALYSIS_SPEC section 1.1.  `code_commit` is the code commit C named by the frozen configuration (the
+    commit holding this manifest, F, cannot be recorded in it).  The working copy must be a legitimate freeze state of C: HEAD is C
+    or a descendant, python/ identical, only freeze material changed -- uncommitted freeze files are fine here, that is the point at
+    which they are being prepared.  `project_root` is written as "." so that no machine path is committed."""
+    from .provenance import freeze_state
 
     root = Path(root)
-    cv = code_version(root)
-    if cv["git_dirty"] or not cv["git_sha"]:
-        raise ManifestError("freeze manifest requires a clean git working tree")
+    cfg_file = root / config_path
+    if not cfg_file.is_file():
+        raise ManifestError(f"frozen configuration {config_path} not found")
+    code_commit = json.loads(cfg_file.read_text(encoding="utf-8")).get("code_commit")
+    state = freeze_state(root, code_commit, allow_dirty_freeze_files=True)
+    if state["problems"]:
+        raise ManifestError("not a valid freeze state:\n  - " + "\n  - ".join(state["problems"]))
     rels = [str(Path(p).as_posix()) for p in (matrix_path, config_path, analysis_script, dependency_lock, *extra_frozen)]
     missing = [r for r in rels if not (root / r).is_file()]
     if missing:
         raise ManifestError(f"frozen files missing: {missing}")
-    return {"schema_version": FREEZE_SCHEMA, "synthetic": False, "complete": True, "spec_version": spec_version, "code_commit": cv["git_sha"],
+    return {"schema_version": FREEZE_SCHEMA, "synthetic": False, "complete": True, "spec_version": spec_version, "code_commit": code_commit,
             "project_root": ".", "matrix_path": str(Path(matrix_path).as_posix()), "config_path": str(Path(config_path).as_posix()),
             "analysis_script_path": str(Path(analysis_script).as_posix()), "dependency_lock_path": str(Path(dependency_lock).as_posix()),
             "frozen_files": {r: _sha_file(root / r) for r in rels}, "seal_path": "results_prereg/evaluation_seal.json"}

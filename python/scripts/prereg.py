@@ -115,14 +115,16 @@ def finalize(run_dir: Path, name: str, cfg, attempt: int, order) -> list[str]:
             or sm.get("checkpoints", {}).get("last", {}).get("step") != cfg.total_env_steps):
         problems.append("summary.json does not satisfy the preregistered summary contract (budget / validation schedule / checkpoints)")
         return problems
-    config = PR.effective_config(row, PR.load_freeze(), cfg, code_version["git_sha"], P.file_sha256(PR.FREEZE_FILE))
+    freeze = PR.load_freeze()
+    code_commit = freeze.get("code_commit") or code_version["git_sha"]  # C when frozen (the run's own HEAD is F); otherwise HEAD itself
+    config = PR.effective_config(row, freeze, cfg, code_commit, P.file_sha256(PR.FREEZE_FILE))
     (run_dir / "train_config.json").write_text(json.dumps(train_config, indent=1))  # what train() wrote, kept for reference
     (run_dir / "config.json").write_text(json.dumps(config, indent=1))              # merged effective configuration (the contract file)
     done = {"run": name, "attempt": attempt, "matrix_order": order, "matrix_sha256": PR.MATRIX_SHA256, "config": config,
             "last_file_sha256": P.file_sha256(run_dir / "last.pt"), "best_file_sha256": P.file_sha256(run_dir / "best.pt"),
             "last_state_sha256": state("last.pt"), "best_state_sha256": state("best.pt"),
             "init_online_hash": init[0]["online_hash"], "summary": summary,
-            "code_version": code_version,
+            "code_version": code_version, "code_commit": code_commit, "freeze_commit": code_version["git_sha"],
             "environment": json.loads((run_dir / "environment.json").read_text()), "completed_utc": utc()}
     (run_dir / "run_complete.json").write_text(json.dumps(done, indent=1), encoding="utf-8")
     return []
@@ -177,16 +179,14 @@ def freeze_problems(freeze: dict) -> list[str]:
     return problems + PR.check_frozen_config(freeze)
 
 
-def preflight(freeze: dict, workers: int | None, *, allow_unfrozen: bool) -> int:
+def preflight(freeze: dict, workers: int | None, *, allow_unfrozen: bool, root: Path | None = None) -> int:
+    """Refuse to start unless everything is frozen.  The code commit C is the one named by the frozen configuration; the commit the
+    runs are made from is F = HEAD, which must be C or a descendant that adds only freeze material (see provenance.freeze_state)."""
     reject_env()
     problems = PR.check_matrix_file()
     if not allow_unfrozen:
         problems += freeze_problems(freeze)
-        cv = P.code_version(ROOT, {"docs/prereg/matrix.csv": "", "docs/prereg/frozen_config_v0.3.2.json": ""})
-        if cv["git_dirty"] or cv["git_dirty"] is None:
-            problems.append("the working tree is not clean (or git is unavailable)")
-        if cv["git_sha"] != freeze.get("code_commit"):
-            problems.append("HEAD is not the frozen commit")
+        problems += P.freeze_state(root or ROOT, freeze.get("code_commit"))["problems"]
     frozen_workers = freeze.get("worker_count")
     w = workers or frozen_workers or 1
     if frozen_workers and w != frozen_workers and not allow_unfrozen:
@@ -299,7 +299,7 @@ def final_eval_run(results: Path, name: str, token, freeze: dict | None = None, 
         raise Refused("hard_enabled must be declared (true/false) in the frozen configuration before the final evaluation")
     run = results / "runs" / name
     done = json.loads((run / "run_complete.json").read_text())
-    meta = {"run_name": name, "code_commit": done["code_version"]["git_sha"], "synthetic": False}
+    meta = {"run_name": name, "code_commit": done["code_commit"], "synthetic": False}
     kw = dict(split=freeze["test_set"], device=freeze["final_eval_device"], threads=freeze["final_eval_threads"], unseal=token, prereg_meta=meta)
     written = {}
     for sc, path in evaluate_checkpoint(run / "last.pt", scenarios=["standard"], out_dir=run, label="last", **kw).items():

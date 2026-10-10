@@ -83,6 +83,51 @@ def code_version(root: Path | None = None, extra_files: dict[str, str] | None = 
             "python_tree_sha256": h.hexdigest() if tracked else None, "files": files}
 
 
+# Files that may differ between the CODE commit C and the FREEZE commit F (the commit the runs are made from).
+FREEZE_MATERIALS = ("docs/prereg/frozen_config_v0.3.2.json", "docs/prereg/freeze_manifest.json", "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md",
+                    "docs/prereg/ANALYSIS_SPEC_v0.3.2.md", "docs/prereg/CLAUDE_HANDOFF_v0.3.2.md", "docs/prereg/FREEZE_CHECKLIST.md")
+
+
+def freeze_state(root: Path | None, code_commit: str | None, *, allow_dirty_freeze_files: bool = False) -> dict:
+    """Is this working copy a legitimate FREEZE commit F of the code commit C = ``code_commit``?
+
+    The frozen configuration records C in a tracked file, so it cannot name the commit that contains it.  Hence two commits: C is
+    the code, F (= HEAD, any descendant of C) adds only freeze material.  Verifiable conditions: C is a commit and an ancestor of
+    (or equal to) HEAD; the ``python/`` tree object is byte-identical at C and HEAD; ``docs/prereg/matrix.csv`` is unchanged; every file
+    that differs between C and HEAD is in FREEZE_MATERIALS; no tracked file is modified in the working tree (while the freeze files
+    are being prepared, ``allow_dirty_freeze_files`` accepts modifications to FREEZE_MATERIALS only).  Returns
+    {"problems": [...], "head": sha-or-None, "code_commit": C}."""
+    root = Path(root or ROOT)
+    problems: list[str] = []
+    head = _git(root, "rev-parse", "HEAD")
+    out = {"problems": problems, "head": head, "code_commit": code_commit}
+    if head is None:
+        problems.append("git is unavailable or this is not a repository")
+        return out
+    if not (isinstance(code_commit, str) and len(code_commit) == 40 and set(code_commit) <= set("0123456789abcdef")):
+        problems.append("code_commit is not a full 40-hex commit id")
+        return out
+    if _git(root, "rev-parse", "--verify", f"{code_commit}^{{commit}}") != code_commit:
+        problems.append("code_commit does not name a commit in this repository")
+        return out
+    ancestor = subprocess.run(["git", "merge-base", "--is-ancestor", code_commit, "HEAD"], cwd=root, capture_output=True).returncode == 0
+    if not ancestor:
+        problems.append("code_commit is not an ancestor of HEAD")
+        return out
+    if _git(root, "rev-parse", f"{code_commit}:python") != _git(root, "rev-parse", "HEAD:python"):
+        problems.append("the python/ tree at HEAD differs from the one at code_commit")
+    changed = (_git(root, "diff", "--name-only", code_commit, "HEAD") or "").splitlines()
+    bad = sorted(f for f in changed if f not in FREEZE_MATERIALS)
+    if bad:
+        problems.append(f"files changed between code_commit and HEAD that are not freeze material: {bad[:5]}")
+    raw = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=root, capture_output=True, text=True).stdout  # not stripped: column 1 may be a space
+    dirty = [line[3:].split(" -> ")[-1] for line in raw.splitlines() if line.strip()]
+    bad_dirty = sorted(f for f in dirty if not (allow_dirty_freeze_files and f in FREEZE_MATERIALS))
+    if bad_dirty:
+        problems.append(f"the working tree has uncommitted changes: {bad_dirty[:5]}")
+    return out
+
+
 def _windows_apis():
     """(ctypes, wintypes, kernel32, psapi) as private WinDLL instances.  ``ctypes.windll`` is a process-wide cache whose
     functions would get our argtypes/restype assignments imposed on every other user of the same DLL; WinDLL is private."""

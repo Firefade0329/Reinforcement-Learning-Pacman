@@ -16,7 +16,7 @@ from pacman_rl import seal
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import prereg as runner  # noqa: E402
 
-FREEZE = {**PR.load_freeze(), "hard_enabled": False}  # the draft file leaves it open; the tests declare it
+FREEZE = {**PR.load_freeze(), "hard_enabled": False, "code_commit": "c" * 40}  # the draft file leaves it open; the tests declare it
 TINY = dict(total_env_steps=96, learn_start=32, eval_every=48, buffer=600, batch=8, device="cpu", val_set="smoke_eval")
 ROWS = [r for r in PR.load_matrix() if r["arch"] == "cnn2" and r["seed"] == 100]  # the n=1 and n=3 runs of one seed
 
@@ -301,22 +301,25 @@ def test_evaluation_seal_refuses_missing_files_changed_checkpoints_and_undeclare
         seal.build_evaluation_seal(results, ROWS, FREEZE, results / "m.json", fm)
 
 
-def test_freeze_manifest_requires_a_clean_tree_and_records_hashes(tmp_path):
-    import subprocess
+def test_runs_record_the_code_commit_c_and_the_freeze_commit_f_separately(fresh):
+    """config.json and the evaluation meta carry C (frozen code_commit); run_complete.json keeps C and the run-time HEAD (F)."""
+    results, script = fresh
+    final(results, script, unseal=True)
+    for r in ROWS:
+        run = results / "runs" / r["run_name"]
+        done = json.loads((run / "run_complete.json").read_text())
+        assert done["code_commit"] == "c" * 40 and done["freeze_commit"] == done["code_version"]["git_sha"] != done["code_commit"]
+        assert json.loads((run / "config.json").read_text())["code_commit"] == "c" * 40
+        assert json.loads((run / "last" / "standard.json").read_text())["meta"]["code_commit"] == "c" * 40
 
-    def git(*a):
-        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *a], cwd=tmp_path, check=True, capture_output=True)
 
-    (tmp_path / "docs" / "prereg").mkdir(parents=True)
-    for rel in ("docs/prereg/matrix.csv", "docs/prereg/frozen_config_v0.3.2.json", "docs/prereg/analysis.py", "docs/prereg/lock.txt"):
-        (tmp_path / rel).write_text(rel)
-    git("init", "-q")
-    git("add", "-A")
-    git("commit", "-qm", "c")
-    obj = seal.build_freeze_manifest(tmp_path, "docs/prereg/matrix.csv", "docs/prereg/frozen_config_v0.3.2.json", "docs/prereg/analysis.py", "docs/prereg/lock.txt")
-    assert obj["schema_version"] == "prereg-freeze-1" and obj["complete"] is True and obj["synthetic"] is False and len(obj["code_commit"]) == 40
-    assert obj["project_root"] == "." and set(obj["frozen_files"]) == {"docs/prereg/matrix.csv", "docs/prereg/frozen_config_v0.3.2.json", "docs/prereg/analysis.py", "docs/prereg/lock.txt"}
-    assert str(tmp_path) not in json.dumps(obj) and obj["seal_path"] == "results_prereg/evaluation_seal.json"
-    (tmp_path / "docs/prereg/analysis.py").write_text("changed")
-    with pytest.raises(seal.ManifestError, match="clean"):
-        seal.build_freeze_manifest(tmp_path, "docs/prereg/matrix.csv", "docs/prereg/frozen_config_v0.3.2.json", "docs/prereg/analysis.py", "docs/prereg/lock.txt")
+def test_frozen_mode_requires_the_frozen_code_commit_and_one_freeze_commit(fresh):
+    results, script = fresh
+    problems, _ = seal.run_problems(results, ROWS, {**FREEZE, "code_commit": "d" * 40}, allow_unfrozen=False, tiny_overrides=TINY)
+    assert any("not produced from the frozen code commit" in p for p in problems)
+    run = results / "runs" / ROWS[0]["run_name"]
+    d = json.loads((run / "run_complete.json").read_text())
+    d["freeze_commit"] = "e" * 40
+    (run / "run_complete.json").write_text(json.dumps(d))
+    problems, _ = seal.run_problems(results, ROWS, FREEZE, allow_unfrozen=True, tiny_overrides=TINY)
+    assert any("different code versions" in p for p in problems)
