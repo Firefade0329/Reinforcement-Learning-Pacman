@@ -143,6 +143,8 @@ def study_for_seal(tmp_path_factory):
     import test_seal as TS
 
     mp = pytest.MonkeyPatch()
+    for var in runner.FORBIDDEN_ENV:  # a module-scoped fixture is built before the per-test environment cleanup of conftest.py
+        mp.delenv(var, raising=False)
     mp.setattr(PR, "load_freeze", lambda path=None: TS.FREEZE)
     results = tmp_path_factory.mktemp("seal_study")
     assert set(runner.run_matrix(TS.ROWS, TS.FREEZE, results, 1, TS.TINY).values()) == {"done"}
