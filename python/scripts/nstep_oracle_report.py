@@ -32,6 +32,32 @@ def fmt(rows, double):
     return "; ".join(f"s{r[0]}a{r[1]} ret={float(r[2]):g} disc={float(r[3]):g} s'={r[4]} y={float(r[5] if double else r[6]):g}" for r in rows)
 
 
+def window(case, sample, gamma):
+    """The reward window of one hand-computed sample, read from the scripted environment (not from the pipeline): the rewards of the
+    transitions from (s, a) up to the one that reaches the sample's next state, within one episode segment, h = their number.  Returns
+    (rewards, h, consistent) where `consistent` checks the hand literals against the script: ret = sum gamma^k r_k and disc = gamma^h
+    (0 when the window ends in a real termination)."""
+    s0, a0, ret, disc, s_next = sample[0], sample[1], H.Fraction(sample[2]), H.Fraction(sample[3]), sample[4]
+    g = H.Fraction(gamma)
+    for env in case["envs"]:
+        for seg in env:
+            for i, t in enumerate(seg):
+                if t[0] == s0 and t[1] == a0:
+                    rewards, status = [], ""
+                    for tt in seg[i:]:
+                        rewards.append(H.Fraction(tt[2]))
+                        status = tt[4]
+                        if tt[3] == s_next:
+                            break
+                    else:
+                        return [], 0, False
+                    h = len(rewards)
+                    total = sum(r * g**k for k, r in enumerate(rewards))
+                    want_disc = H.Fraction(0) if status == "terminated" else g**h
+                    return [float(r) for r in rewards], h, bool(total == ret and disc == want_disc)
+    return [], 0, False
+
+
 def build() -> str:
     import torch
 
@@ -52,9 +78,13 @@ def build() -> str:
                 actual, counts, _, _ = H.run_pipeline(case["envs"], case["q_online"], case["q_target"], n, gamma, double)
                 ok = actual == sorted(lit) and counts == exp["counts"]
                 ok_all &= ok
+                wins = [window(case, smp, gamma) for smp in exp["samples"]]
+                ok_all &= all(w[2] for w in wins)
                 out += [f"### n={n}, {'Double DQN' if double else 'plain max target'}: {'PASS' if ok else 'FAIL'}",
                         f"- stored samples after each round (hand / actual): {exp['counts']} / {counts}",
-                        f"- hand-computed: {fmt(sorted(lit), True)}", f"- actual:        {fmt(actual, True)}", ""]
+                        f"- hand-computed: {fmt(sorted(lit), True)}", f"- actual:        {fmt(actual, True)}",
+                        "- reward window and h of each hand-computed sample (read from the scripted episode; ret = sum gamma^k r_k, disc = gamma^h or 0 at a real termination): "
+                        + "; ".join(f"s{smp[0]}a{smp[1]}: rewards={w[0]} h={w[1]} {'consistent' if w[2] else 'INCONSISTENT'}" for smp, w in zip(exp["samples"], wins)), ""]
     out += ["## planted bugs (each must be detected)"]
     for name in sorted(MUTANTS):
         impl, caught = MUTANTS[name](), False

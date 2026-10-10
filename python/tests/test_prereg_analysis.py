@@ -381,6 +381,27 @@ def test_E9_score_and_steps_ranges(study, tmp_path, field, value, code):
     fail(tmp_path, study, code)
 
 
+def test_error_priority_follows_csv_run_order_then_last_best_hard(tmp_path):
+    """ANALYSIS_SPEC 2.3 enumerates per CSV run: last/standard, best/standard, last/hard.  Two faults of different codes: the one in the
+    EARLIER run must be reported even though the other sits in an earlier-listed endpoint (an endpoint-major loop reports the later run)."""
+    R1 = "prereg_res4_n3_s100"
+    st = Study(tmp_path / "p1", d=const_d(10, 20, 30))
+    st.edit_json(R0, "best/standard.json", lambda d: d["records"][0].update(score=999), reseal=False)       # E_SCORE_RANGE in run 1, best
+    st.edit_json(R1, "last/standard.json", lambda d: d["records"][0].update(steps=0), reseal=False)        # E_STEPS_RANGE in run 2, last
+    st.reseal()
+    fail(tmp_path, st, "E_SCORE_RANGE", run_name=R0, path=f"{R0}/best/standard.json")
+    st2 = Study(tmp_path / "p2", d=const_d(10, 20, 30), hard=True)
+    st2.edit_json(R0, "last/hard.json", lambda d: d["records"][0].update(score=999), reseal=False)         # run 1, hard
+    st2.edit_json(R1, "last/standard.json", lambda d: d["records"][0].update(steps=0), reseal=False)       # run 2, last
+    st2.reseal()
+    fail(tmp_path, st2, "E_SCORE_RANGE", run_name=R0, path=f"{R0}/last/hard.json")
+    st3 = Study(tmp_path / "p3", d=const_d(10, 20, 30))
+    st3.edit_json(R0, "best/standard.json", lambda d: d["records"][0].update(score=999), reseal=False)     # same run: last before best
+    st3.edit_json(R0, "last/standard.json", lambda d: d["records"][0].update(steps=0), reseal=False)
+    st3.reseal()
+    fail(tmp_path, st3, "E_STEPS_RANGE", run_name=R0, path=f"{R0}/last/standard.json")
+
+
 def test_E10_incomplete_hard(tmp_path):
     st = Study(tmp_path / "proj", d=const_d(10, 20, 30), hard=True)
     st.path(R0, "last/hard.json").unlink()

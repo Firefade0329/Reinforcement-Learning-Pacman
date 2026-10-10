@@ -5,6 +5,7 @@ Implementer and verifier of this test are the same person (the model that wrote 
 numbers come from the preregistration's hand computations (data/nstep_oracle_cases.json), cross-checked by an
 exact-arithmetic re-derivation.  An independent human review is still required (reviewer / review_date fields in the
 JSON are intentionally empty)."""
+import json
 from fractions import Fraction
 
 import pytest
@@ -128,3 +129,38 @@ def test_evidence_report_runs_and_is_green():
     spec.loader.exec_module(mod)
     text = mod.build()
     assert "**overall: PASS**" in text and "NOT DETECTED" not in text and "reviewer: ``" in text  # reviewer stays empty
+
+
+def _report_module():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "nstep_oracle_report.py"
+    spec = importlib.util.spec_from_file_location("nstep_oracle_report", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_report_lists_every_samples_reward_window_and_h_and_cross_checks_the_literals():
+    mod = _report_module()
+    text = mod.build()
+    assert text.count("reward window and h of each hand-computed sample") == 4 * 2 * 2 and "INCONSISTENT" not in text
+    assert "s0a0: rewards=[1.0, 2.0, 4.0] h=3 consistent" in text  # nonterminal chain, n=3
+    assert "s6a0: rewards=[8.0, 16.0, 32.0] h=3 consistent" in text and "s8a0: rewards=[32.0] h=1 consistent" in text  # two interleaved envs
+    case = next(c for c in CASES if c["name"] == "truncated_short_chain")
+    assert mod.window(case, case["expected"]["3"]["samples"][0], GAMMA) == ([1.0, 2.0], 2, True)  # window stops at the real final state 2, not the reset state
+
+
+def test_the_window_cross_check_catches_a_wrong_hand_literal():
+    mod = _report_module()
+    case = next(c for c in CASES if c["name"] == "nonterminal_chain")
+    good = case["expected"]["3"]["samples"][0]
+    assert mod.window(case, good, GAMMA)[2] is True
+    assert mod.window(case, [good[0], good[1], 3.5, *good[3:]], GAMMA)[2] is False  # return that is not sum gamma^k r_k
+    assert mod.window(case, [*good[:3], 0.25, *good[4:]], GAMMA)[2] is False       # discount that is not gamma^h
+    assert mod.window(case, [*good[:4], 99, *good[5:]], GAMMA)[2] is False          # next state the script never reaches
+
+
+def test_oracle_cases_cite_the_current_specification_version():
+    assert all(c["doc_ref"].startswith("v0.3.2 section 6") or "v0." not in c["doc_ref"] for c in CASES) and "v0.3.1" not in json.dumps(H.CASES)

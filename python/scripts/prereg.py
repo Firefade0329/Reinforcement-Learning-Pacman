@@ -396,7 +396,8 @@ def save_final_eval_environment(results: Path, freeze: dict, evidence: dict | No
 
 def final_eval(manifest: Path, results: Path, analysis_script: Path, *, unseal: bool, rows=None, freeze=None,
                allow_unfrozen=False, tiny=None, root: Path | None = None) -> dict:
-    """The ONLY code path that reads the sealed test seeds.  Verifies the manifest against the files on disk first."""
+    """The default (approved) entry that reads the sealed test seeds.  Verifies the manifest against the files on disk first.  The seal is
+    protocol-based: the low-level Python API, the public seed constants and source edits are not prevented from reading the seeds."""
     from pacman_rl import seal
 
     if not unseal:
@@ -443,7 +444,7 @@ def main(argv=None):
     p.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS)
     p.add_argument("--analysis-script", type=Path, required=True)
     p.add_argument("--out", type=Path)
-    p = sub.add_parser("final-eval", help="the only step that reads the sealed test seeds (CPU, 1 thread)")
+    p = sub.add_parser("final-eval", help="the approved step that reads the sealed test seeds (CPU, 1 thread)")
     p.add_argument("--results-dir", type=Path, default=DEFAULT_RESULTS)
     p.add_argument("--manifest", type=Path, required=True)
     p.add_argument("--analysis-script", type=Path, required=True)

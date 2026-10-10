@@ -382,8 +382,8 @@ def check_records(ctx):
     Y = {q: np.zeros((3, 2, 5, 300), dtype=np.int64) for q, _ in kinds}
     aux = {q: {k: np.zeros((3, 2, 5, 300), dtype=np.int64) for k in ("died", "won", "truncated", "steps")} for q, _ in kinds}
     files = {}
-    for q, rel in kinds:
-        for r in rows:
+    for r in rows:  # ANALYSIS_SPEC 2.3: files in CSV run order, and within a run last/standard, best/standard, last/hard
+        for q, rel in kinds:
             n = r["run_name"]
             erel = f"{n}/{rel}"
             recs = _req(docs[erel], "records", erel, n)

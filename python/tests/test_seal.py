@@ -418,3 +418,16 @@ def test_final_evaluation_takes_the_best_step_from_the_current_summary_file(fres
     (run / "summary.json").write_text(json.dumps(s))  # the file, not the cached copy, is authoritative
     runner.final_eval_run(results, name, seal.UnsealToken(seal._ISSUE_KEY, "t"), FREEZE)
     assert json.loads((run / "best" / "standard.json").read_text())["meta"]["checkpoint_step"] == 48
+
+
+def test_documentation_does_not_claim_an_unbypassable_seal():
+    """The seal is protocol-based: the default formal entry keeps the seeds closed, the low-level API / public constants / source edits do not.
+    Texts must not say that only final-eval can read the sealed seeds."""
+    root = Path(__file__).resolve().parents[2]
+    banned = ("The ONLY code path that reads the sealed", "只能经 `scripts/prereg.py final-eval`")
+    for rel in ("docs/RESEARCH_LOG.md", "docs/PLAN.md", "docs/prereg/README.md", "python/README.md", "python/scripts/prereg.py", "python/pacman_rl/seal.py"):
+        text = (root / rel).read_text(encoding="utf-8")
+        assert not any(b in text for b in banned), rel
+    log = (root / "docs/RESEARCH_LOG.md").read_text(encoding="utf-8")
+    assert "基于协议" in log and "不可绕过的保证" in log
+    assert "protocol, not a security boundary" in (root / "docs/prereg/README.md").read_text(encoding="utf-8")

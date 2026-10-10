@@ -2,8 +2,9 @@
 
 ``evaluate.seed_set("prereg_test")`` refuses to return the seeds unless it is handed an ``UnsealToken``.
 Tokens are only issued by ``verify_manifest`` (all preregistered runs complete, checkpoint hashes verified).
-This prevents accidents (a stray ``--split`` or a copy-pasted call); it cannot stop someone who edits the code,
-which is what the frozen commit hash and the procedural rules in docs/RESEARCH_LOG.md are for.
+This prevents accidents (a stray ``--split`` or a copy-pasted call) when the default formal entry (``prereg.py final-eval``) is used.  It
+gives no unbypassable guarantee: the low-level Python API, the public seed constants and edits of the source can all read the seeds, which
+is what the frozen commit hash and the procedural rules in docs/RESEARCH_LOG.md are for (the seal is protocol-based).
 """
 from __future__ import annotations
 

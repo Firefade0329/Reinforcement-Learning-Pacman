@@ -15,10 +15,16 @@ Until then `frozen_config_v0.3.2.json` has `"status": "draft"` and the formal ru
 that order. It is not generated from any scheduling seed. The tests check the file's hash and that every seed block
 (rows 6k+1..6k+6) holds the six distinct (architecture, n-step) configurations of one training seed.
 
-**Seed partitions** (`python/pacman_rl/evaluate.py`): checkpoint selection `prereg_val` 21000-21049; sealed final test
+**Seed partitions** (`python/pacman_rl/evaluate.py`): checkpoint selection `prereg_val` 21000-21049; "sealed" final test
 `prereg_test` 30000-30299; smoke validation `smoke_eval` 40000-40009; training episodes `1_000_000*(run_seed+1)+k`
 with run seeds 100-104 (formal) and 900/901 (smoke); the legacy-fidelity range 20000-20299 and the old study's 5000-5049 /
 10000-10299 are not used. `python/tests/test_seed_partition.py` checks that all of them are pairwise disjoint.
+
+**What "sealed" guarantees.** The default formal entry (`prereg.py final-eval` with a verified manifest and `--unseal`) does not read the test seeds
+without both, and the covered training / selection paths are tested not to evaluate that partition. It is a protocol, not a security boundary:
+the low-level Python API (constructing a token, calling the evaluation functions), the public seed constants and edits of the source are not
+prevented from reading the seeds. The protection against that is the frozen commit, the manifest hashes, the one-shot rule and the written log;
+the seal must not be described as "only `final-eval` can read the seeds".
 
 ## Commands (run from the repository root)
 
@@ -104,6 +110,11 @@ It reads only the files named by the freeze manifest and the evaluation seal, va
 synthetic studies only (`python/tests/test_prereg_analysis.py`, fixtures F1-F8 and malformed inputs E1-E13 of the specification
 section 8, with hand-derived expected values); no real or old result is ever read. The human sign-off fields (reviewer, date, what was
 checked, freeze approval) are intentionally not filled in by the code or its author.
+
+Difference from the specification text, pending a specification revision: the sample variance / standard deviation is computed in exact
+rational arithmetic (`fractions.Fraction`) from the integer sums and converted to float once, whereas the specification text says float64 with
+`math.fsum`. The implementation was deliberately not changed; the two are expected to differ only at floating-point rounding level (not measured separately), and the spec text should be revised
+to describe the exact path (or the code changed on request).
 
 What the outputs contain beyond the statistics (ANALYSIS_SPEC section 7): for every endpoint the per-seed integer counts and sources
 (run, file, SHA-256, 300 test seeds, integer sum) of the death / win / truncation rates and mean steps; model, rate and effect tables for

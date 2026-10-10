@@ -16,7 +16,7 @@ TEST_SEEDS = list(range(10000, 10300))  # final numbers only
 EQUIV_SEEDS = list(range(20000, 20300))  # fidelity checks of NON-learning agents (never used for selection or final numbers)
 # Preregistered architecture x n-step study (docs/prereg/): its own selection / sealed final / smoke partitions.
 PREREG_VAL_SEEDS = list(range(21000, 21050))  # model selection of the preregistered runs
-PREREG_TEST_SEEDS = list(range(30000, 30300))  # SEALED: read only by the final evaluation after all runs are complete
+PREREG_TEST_SEEDS = list(range(30000, 30300))  # SEALED by protocol: the final evaluation reads it after all runs are complete (the constant itself is public)
 SMOKE_EVAL_SEEDS = list(range(40000, 40010))  # throughput / correctness smoke runs only
 SCENARIOS = {"standard": STANDARD, "hard": HARD}
 TRAIN_SEED_BASE = 1_000_000  # training episode seeds: base * (run_seed + 1) + k  (disjoint from val/test)

@@ -6,7 +6,7 @@
   "cases": [
     {
       "name": "nonterminal_chain",
-      "doc_ref": "v0.3.1 section 6, rows 1-2: rewards 1,2,4; n=1 -> 4 (naive 11), n=3 -> 4.25 (naive 6.75)",
+      "doc_ref": "v0.3.2 section 6, rows 1-2: rewards 1,2,4; n=1 -> 4 (naive 11), n=3 -> 4.25 (naive 6.75)",
       "envs": [[[[0,0,1,1,""],[1,0,2,2,""],[2,0,4,3,""]]]],
       "q_online": {"1":[5,0,0,0,0],"2":[5,0,0,0,0],"3":[5,0,0,0,0]},
       "q_target": {"1":[6,20,0,0,0],"2":[8,16,0,0,0],"3":[10,30,0,0,0]},
@@ -17,7 +17,7 @@
     },
     {
       "name": "terminal_short_chain",
-      "doc_ref": "v0.3.1 section 6, row 3: rewards 1,2, second step really terminates; n=3 tail flushed, nothing bootstrapped",
+      "doc_ref": "v0.3.2 section 6, row 3: rewards 1,2, second step really terminates; n=3 tail flushed, nothing bootstrapped",
       "envs": [[[[0,0,1,1,""],[1,0,2,2,"terminated"]],[]]],
       "q_online": {"1":[5,0,0,0,0],"2":[5,0,0,0,0]},
       "q_target": {"1":[6,20,0,0,0],"2":[9,9,0,0,0]},
@@ -28,7 +28,7 @@
     },
     {
       "name": "truncated_short_chain",
-      "doc_ref": "v0.3.1 section 6, row 4: same chain, second step only time-truncated; real final state 2 (value 8), the state reached by the reset (5, value 100) must never be used",
+      "doc_ref": "v0.3.2 section 6, row 4: same chain, second step only time-truncated; real final state 2 (value 8), the state reached by the reset (5, value 100) must never be used",
       "envs": [[[[0,0,1,1,""],[1,0,2,2,"truncated"]],[[5,0,16,6,""]]]],
       "q_online": {"1":[5,0,0,0,0],"2":[5,0,0,0,0],"6":[5,0,0,0,0]},
       "q_target": {"1":[6,20,0,0,0],"2":[8,16,0,0,0],"5":[100,100,0,0,0],"6":[50,60,0,0,0]},
