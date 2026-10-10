@@ -200,14 +200,26 @@ def freeze_problems(freeze: dict) -> list[str]:
     return problems + PR.check_frozen_config(freeze)
 
 
-def preflight(freeze: dict, workers: int | None, *, allow_unfrozen: bool, root: Path | None = None) -> int:
+def binding_problems(root: Path | None = None) -> tuple[list[str], dict]:
+    """The freeze binding check (configuration <-> manifest <-> actual files), shared by the training preflight and the final-evaluation preflight."""
+    from pacman_rl.freeze_binding import binding_check
+
+    return binding_check(root or ROOT)
+
+
+def preflight(freeze: dict, workers: int | None, *, allow_unfrozen: bool, root: Path | None = None, evidence: dict | None = None) -> int:
     """Refuse to start unless everything is frozen.  The code commit C is the one named by the frozen configuration; the commit the
     runs are made from is F = HEAD, which must be C or a descendant that adds only freeze material (see provenance.freeze_state)."""
     reject_env()
     problems = PR.check_matrix_file()
     if not allow_unfrozen:
         problems += freeze_problems(freeze)
-        problems += P.freeze_state(root or ROOT, freeze.get("code_commit"))["problems"]
+        state = P.freeze_state(root or ROOT, freeze.get("code_commit"))
+        problems += state["problems"]
+        bind, ev = binding_problems(root)  # before any task, model or subprocess exists
+        problems += bind
+        if evidence is not None and not problems:
+            evidence.update(ev, head=state["head"], purpose="training preflight")
     frozen_workers = freeze.get("worker_count")
     w = workers or frozen_workers or 1
     if frozen_workers and w != frozen_workers and not allow_unfrozen:
@@ -370,6 +382,8 @@ def final_eval_preflight(freeze: dict, results: Path, rows, *, root: Path | None
     problems = PR.check_matrix_file() + freeze_problems(freeze)
     state = P.freeze_state(root, freeze.get("code_commit"))
     problems += state["problems"]
+    bind, binding = binding_problems(root)
+    problems += bind
     fcs = set()
     for r in rows:
         f = results / "runs" / r["run_name"] / "run_complete.json"
@@ -380,7 +394,7 @@ def final_eval_preflight(freeze: dict, results: Path, rows, *, root: Path | None
         problems.append("HEAD is not the freeze commit F that the runs were made from")
     if problems:
         raise Refused("refusing the final evaluation:\n  - " + "\n  - ".join(problems))
-    return {"head": state["head"], "code_commit": state["code_commit"], "freeze_commit_of_runs": sorted(fcs)[0]}
+    return {"head": state["head"], "code_commit": state["code_commit"], "freeze_commit_of_runs": sorted(fcs)[0], "freeze_binding": binding}
 
 
 def save_final_eval_environment(results: Path, freeze: dict, evidence: dict | None, *, root: Path | None = None):
@@ -481,7 +495,12 @@ def main(argv=None):
             print(f"{r['order']:2d}  {r['run_name']}")
         return 0
     if a.cmd == "run":
-        workers = preflight(freeze, a.workers, allow_unfrozen=False)
+        ev: dict = {}
+        workers = preflight(freeze, a.workers, allow_unfrozen=False, evidence=ev)
+        a.results_dir.mkdir(parents=True, exist_ok=True)
+        with open(a.results_dir / "preflight_log.jsonl", "a", encoding="utf-8") as f:  # identity and integrity only: no scores, no per-step work
+            f.write(json.dumps({**ev, "workers": workers, "window_diagnostics": a.window_diagnostics}) + "\n")
+        print(json.dumps({"preflight": ev}))
         out = run_matrix(PR.load_matrix(), freeze, a.results_dir, workers, only=a.only, diagnostics=a.window_diagnostics)
         print(json.dumps(out, indent=1))
         return 0 if all(v in ("done", "skipped") for v in out.values()) else 1

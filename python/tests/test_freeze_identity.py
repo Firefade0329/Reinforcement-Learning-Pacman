@@ -18,6 +18,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import prereg as runner  # noqa: E402
 
 CFG_REL = "docs/prereg/frozen_config_v0.3.2.json"
+MAN_REL = "docs/prereg/freeze_manifest.json"
+
+
+ANALYSIS_REL = "python/pacman_rl/m.py"  # the stand-in "analysis script" of the temporary repositories
+LOCK_REL = "docs/prereg/dependency_lock.txt"
+FAKE_LOCK = "matplotlib==0.0.0\nnumpy==0.0.0\npytest==0.0.0\ntorch==0.0.0\n"  # clearly fake pins (test fixture only)
+
+
+def sha_of(path) -> str:
+    import hashlib
+
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 class Repo:
@@ -28,6 +40,7 @@ class Repo:
         (root / "docs" / "prereg").mkdir(parents=True)
         shutil.copy(PR.MATRIX_FILE, root / "docs" / "prereg" / "matrix.csv")
         (root / "docs" / "PLAN.md").write_text("plan\n")
+        (root / LOCK_REL).write_text(FAKE_LOCK)  # the dependency snapshot is part of the CODE commit C
         self.cfg = json.loads(PR.FREEZE_FILE.read_text())
         self.cfg.update(status="frozen", machine_id="m", worker_count=2, hard_enabled=False)
         self.cfg["to_fill_at_freeze"].update({k: "x" for k in runner.TO_FILL}, power_and_sleep_settings_confirmed=True)
@@ -43,15 +56,64 @@ class Repo:
     def write_cfg(self):
         (self.root / CFG_REL).write_text(json.dumps(self.cfg, indent=1))
 
-    def freeze(self):
-        """Fill code_commit = C, add the fake preregistration texts, commit F."""
-        self.cfg["code_commit"] = self.C
-        self.write_cfg()
+    def write_texts(self):
         (self.root / "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md").write_text("SYNTHETIC FAKE preregistration text\n")
         (self.root / "docs/prereg/ANALYSIS_SPEC_v0.3.2.md").write_text("SYNTHETIC FAKE analysis specification text\n")
+
+    def fill_hashes(self):
+        """The three configuration hashes, then the configuration file (its own hash is computed AFTER this)."""
+        fill = self.cfg["to_fill_at_freeze"]
+        fill["analysis_script_sha256"] = sha_of(self.root / ANALYSIS_REL)
+        fill["preregistration_document_sha256"] = sha_of(self.root / "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md")
+        fill["dependency_lock_sha256"] = sha_of(self.root / LOCK_REL)
+        self.write_cfg()
+
+    def write_manifest(self, **over):
+        """Written by hand here (not by the generator under test): path -> actual hash of every required file."""
+        rels = ["docs/prereg/matrix.csv", CFG_REL, "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md", "docs/prereg/ANALYSIS_SPEC_v0.3.2.md", ANALYSIS_REL, LOCK_REL, *self.extra_rels()]
+        man = {"schema_version": "prereg-freeze-1", "synthetic": False, "complete": True, "spec_version": "0.3.2", "code_commit": self.cfg["code_commit"],
+               "project_root": ".", "matrix_path": "docs/prereg/matrix.csv", "config_path": CFG_REL, "analysis_script_path": ANALYSIS_REL,
+               "dependency_lock_path": LOCK_REL, "frozen_files": {r: sha_of(self.root / r) for r in rels}, "seal_path": "results_prereg/evaluation_seal.json"}
+        man.update(over)
+        (self.root / MAN_REL).write_text(json.dumps(man, indent=1, sort_keys=True))
+        return man
+
+    def extra_rels(self):
+        return []
+
+    def freeze(self, manifest=True):
+        """Fill code_commit = C, add the fake preregistration texts, the three hashes and the manifest, commit F."""
+        self.cfg["code_commit"] = self.C
+        self.write_cfg()
+        self.write_texts()
+        self.fill_hashes()
+        if manifest:
+            self.write_manifest()
         self.git("add", "-A")
         self.git("commit", "-qm", "freeze")
         return self.git("rev-parse", "HEAD")
+
+    def amend_manifest(self, fn):
+        """Edit the committed manifest through `fn(dict)` and commit (used for the one-fault-at-a-time fixtures)."""
+        man = json.loads((self.root / MAN_REL).read_text())
+        fn(man)
+        (self.root / MAN_REL).write_text(json.dumps(man, indent=1, sort_keys=True))
+        self.git("add", "-A")
+        self.git("commit", "-qm", "manifest edit")
+
+    def amend_cfg(self, fn, rehash_in_manifest=True):
+        fn(self.cfg)
+        self.write_cfg()
+        if rehash_in_manifest:  # keep the manifest's hash of the configuration file current so that the fault under test is not masked
+            self.amend_manifest(lambda m: m["frozen_files"].__setitem__(CFG_REL, sha_of(self.root / CFG_REL)))
+        else:
+            self.git("add", "-A")
+            self.git("commit", "-qm", "cfg edit")
+
+    def commit_file(self, rel, text):
+        (self.root / rel).write_text(text)
+        self.git("add", "-A")
+        self.git("commit", "-qm", f"edit {rel}")
 
 
 @pytest.fixture()
@@ -152,24 +214,26 @@ def test_draft_configuration_is_refused_even_in_a_valid_git_state(repo):
 
 # ------------------------------------------------------------------ freeze manifest preparation
 def build(repo):
-    return seal.build_freeze_manifest(repo.root, "docs/prereg/matrix.csv", CFG_REL, "python/pacman_rl/m.py", "python/pacman_rl/m.py",
+    return seal.build_freeze_manifest(repo.root, "docs/prereg/matrix.csv", CFG_REL, ANALYSIS_REL, LOCK_REL,
                                       ["docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md", "docs/prereg/ANALYSIS_SPEC_v0.3.2.md"])
 
 
-def test_manifest_can_be_prepared_with_uncommitted_freeze_files_and_records_c(repo):
+def prepare(repo):
+    """Everything of the freeze commit except the manifest and the commit itself: C in the configuration, the texts, the three hashes."""
     repo.cfg["code_commit"] = repo.C
     repo.write_cfg()
-    (repo.root / "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md").write_text("SYNTHETIC FAKE preregistration text\n")
-    (repo.root / "docs/prereg/ANALYSIS_SPEC_v0.3.2.md").write_text("SYNTHETIC FAKE analysis specification text\n")
+    repo.write_texts()
+    repo.fill_hashes()
+
+
+def test_manifest_can_be_prepared_with_uncommitted_freeze_files_and_records_c(repo):
+    prepare(repo)
     obj = build(repo)  # HEAD == C, only freeze material is uncommitted
     assert obj["code_commit"] == repo.C and obj["project_root"] == "." and set(obj["frozen_files"]) >= {CFG_REL, "docs/prereg/matrix.csv"}
 
 
 def test_manifest_refuses_changed_code_or_a_missing_code_commit(repo):
-    repo.cfg["code_commit"] = repo.C
-    repo.write_cfg()
-    (repo.root / "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md").write_text("SYNTHETIC FAKE\n")
-    (repo.root / "docs/prereg/ANALYSIS_SPEC_v0.3.2.md").write_text("SYNTHETIC FAKE\n")
+    prepare(repo)
     (repo.root / "python/pacman_rl/m.py").write_text("x = 5\n")
     with pytest.raises(seal.ManifestError, match="uncommitted changes"):
         build(repo)
@@ -182,7 +246,7 @@ def test_manifest_refuses_changed_code_or_a_missing_code_commit(repo):
 
 def test_manifest_always_freezes_the_two_texts_even_if_the_caller_forgets_them(repo):
     repo.freeze()
-    obj = seal.build_freeze_manifest(repo.root, "docs/prereg/matrix.csv", CFG_REL, "python/pacman_rl/m.py", "python/pacman_rl/m.py")  # no extras
+    obj = seal.build_freeze_manifest(repo.root, "docs/prereg/matrix.csv", CFG_REL, ANALYSIS_REL, LOCK_REL)  # no extras
     assert {"docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md", "docs/prereg/ANALYSIS_SPEC_v0.3.2.md"} <= set(obj["frozen_files"])
 
 
@@ -191,7 +255,7 @@ def test_manifest_refuses_when_a_mandatory_text_is_absent(repo, missing):
     repo.freeze()
     (repo.root / "docs/prereg" / missing).unlink()
     with pytest.raises(seal.ManifestError, match="mandatory"):
-        seal.build_freeze_manifest(repo.root, "docs/prereg/matrix.csv", CFG_REL, "python/pacman_rl/m.py", "python/pacman_rl/m.py")
+        seal.build_freeze_manifest(repo.root, "docs/prereg/matrix.csv", CFG_REL, ANALYSIS_REL, LOCK_REL)
 
 
 # ------------------------------------------------------------------ the final evaluation repeats the training gate
@@ -214,7 +278,9 @@ def final_preflight(repo, results):
 def test_final_preflight_accepts_head_equal_to_the_freeze_commit_of_all_runs(repo):
     F = repo.freeze()
     ev = final_preflight(repo, write_runs(repo, F))
+    binding = ev.pop("freeze_binding")
     assert ev == {"head": F, "code_commit": repo.C, "freeze_commit_of_runs": F}
+    assert binding["binding_passed"] is True and binding["code_commit"] == repo.C and binding["freeze_manifest_sha256"] == sha_of(repo.root / MAN_REL)
 
 
 def test_final_preflight_refuses_when_head_moved_after_the_runs(repo):
@@ -278,7 +344,7 @@ def test_the_runner_gate_does_not_depend_on_the_callers_environment(repo, monkey
 
 def test_declared_deviations_are_validated_and_recorded_in_the_manifest(repo):
     repo.freeze()
-    args = (repo.root, "docs/prereg/matrix.csv", CFG_REL, "python/pacman_rl/m.py", "python/pacman_rl/m.py")
+    args = (repo.root, "docs/prereg/matrix.csv", CFG_REL, ANALYSIS_REL, LOCK_REL)
     dev = {"id": "D1", "description": "synthetic", "source": "docs/prereg/FREEZE_CHECKLIST.md#C3"}
     assert seal.build_freeze_manifest(*args, deviations=[dev])["deviations"] == [dev]
     assert "deviations" not in seal.build_freeze_manifest(*args)

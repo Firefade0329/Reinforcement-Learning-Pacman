@@ -175,3 +175,18 @@ reset) also contains such a deviation after a greedy start (B2, a descriptive co
   evaluation seal or the analysis input), then `summarize --out-dir ...` for the central description: per configuration the five per-run rates, mean and
   sd (ddof=1) over the runs with a defined rate (k of 5) and the pooled ratio as a separate quantity, per `h` and over the 15 start bins. No tests,
   intervals or rankings; findings suggested by it are post-hoc explanations.
+
+## Freeze binding check (before any formal run and before the final evaluation)
+
+Both formal entries (`prereg.py run` and `prereg.py final-eval`) run the same check before they create a training task, a model, a subprocess,
+an environment step, an unseal permission or any evaluation (`pacman_rl/freeze_binding.py`, standard library only). It reads only
+`docs/prereg/frozen_config_v0.3.2.json` and `docs/prereg/freeze_manifest.json` under the project root and refuses (exit status non-zero, nothing
+started) unless: the manifest exists, is valid JSON without duplicate keys, has `synthetic: false` and `complete: true`; its `code_commit` equals the
+configuration's `code_commit` (C); every entry of `frozen_files` is a relative path inside the project whose file exists and whose raw working-tree
+SHA-256 equals the recorded value (all entries, extra-frozen ones included), the registered matrix hash is the matrix entry, and the required files
+(matrix, configuration, preregistration text, analysis specification, the analysis script and the dependency lock named by the manifest) are listed;
+and the three configuration fields `to_fill_at_freeze.analysis_script_sha256 / preregistration_document_sha256 / dependency_lock_sha256` equal the
+manifest entries of those files (all zeros is not a binding). A success leaves `checked_utc`, HEAD (F), C, the manifest hash and the number of files
+checked in `results_prereg/preflight_log.jsonl` (training) and in the final-evaluation environment evidence. The manifest generator
+(`freeze-manifest`) applies the same rules to the manifest it is about to write and does not need an older manifest. The manifest does not list itself;
+its own hash belongs in the external freeze record. A manifest regenerated after F is a different freeze (F'), not F.

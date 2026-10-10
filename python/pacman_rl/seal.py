@@ -249,4 +249,10 @@ def build_freeze_manifest(root, matrix_path, config_path, analysis_script, depen
             "frozen_files": {r: _sha_file(root / r) for r in rels}, "seal_path": "results_prereg/evaluation_seal.json"}
     if devs:
         manifest["deviations"] = devs
+    from .freeze_binding import check_binding, load_json_strict
+
+    # the generator applies the same rules the formal entries will apply to the committed manifest (it does not need an older manifest)
+    problems = check_binding(root, load_json_strict(cfg_file), manifest)
+    if problems:
+        raise ManifestError("the frozen configuration, the files and the manifest do not agree:\n  - " + "\n  - ".join(problems))
     return manifest
