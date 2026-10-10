@@ -184,7 +184,9 @@ an environment step, an unseal permission or any evaluation (`pacman_rl/freeze_b
 started) unless: the manifest exists, is valid JSON without duplicate keys, has `synthetic: false` and `complete: true`; its `code_commit` equals the
 configuration's `code_commit` (C); every entry of `frozen_files` is a relative path inside the project whose file exists and whose raw working-tree
 SHA-256 equals the recorded value (all entries, extra-frozen ones included), the registered matrix hash is the matrix entry, and the required files
-(matrix, configuration, preregistration text, analysis specification, the analysis script and the dependency lock named by the manifest) are listed;
+(matrix, configuration, preregistration text, analysis specification, hand-over text, `FREEZE_CHECKLIST.md`, `python/pacman_rl/window_diag.py`,
+`python/scripts/window_diagnostics_summary.py`, `.gitattributes`, `python/scripts/prereg_analysis.requirements.txt`, and the analysis script and dependency
+lock named by the manifest) are listed;
 and the three configuration fields `to_fill_at_freeze.analysis_script_sha256 / preregistration_document_sha256 / dependency_lock_sha256` equal the
 manifest entries of those files (all zeros is not a binding). A success leaves `checked_utc`, HEAD (F), C, the manifest hash and the number of files
 checked in `results_prereg/preflight_log.jsonl` (training) and in the final-evaluation environment evidence. The manifest generator

@@ -361,3 +361,29 @@ def test_generator_refuses_a_missing_snapshot_in_c_and_a_bad_format(tmp_path, mo
     prepare(r)
     with pytest.raises(seal.ManifestError, match="dependency_lock.txt: .*not an exact"):
         generate(r)
+
+
+# ------------------------------------------------------------------ every mandatory frozen item (C3)
+@pytest.mark.parametrize("entry", ENTRIES)
+@pytest.mark.parametrize("rel", sorted(FBm.REQUIRED_FROZEN))
+def test_each_mandatory_frozen_item_must_be_listed(repo, entry, rel):
+    if rel == "docs/prereg/frozen_config_v0.3.2.json":
+        pytest.skip("the configuration's own entry is covered by the configuration-hash tests")
+    repo.amend_manifest(lambda m: m["frozen_files"].pop(rel))
+    with pytest.raises(runner.Refused, match=rf"required frozen file '{rel}' is not listed"):
+        entry(repo)
+
+
+@pytest.mark.parametrize("rel", ["docs/prereg/CLAUDE_HANDOFF_v0.3.2.md", "docs/prereg/FREEZE_CHECKLIST.md", "python/pacman_rl/window_diag.py",
+                                 "python/scripts/window_diagnostics_summary.py", ".gitattributes", "python/scripts/prereg_analysis.requirements.txt"])
+def test_actual_drift_of_each_mandatory_item_is_refused(repo, rel):
+    (repo.root / rel).write_bytes((repo.root / rel).read_bytes() + b"\n# drift\n")
+    repo.git("add", "-A")
+    repo.git("commit", "-qm", f"drift {rel}")
+    with pytest.raises(runner.Refused, match=rf"{rel.replace('.', r'[.]')}: the file's SHA-256 .* differs from the frozen"):
+        train_entry(repo)
+
+
+def test_the_manifest_never_lists_itself(repo):
+    man = json.loads((repo.root / MAN_REL).read_text())
+    assert MAN_REL not in man["frozen_files"]

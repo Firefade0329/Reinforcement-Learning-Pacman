@@ -43,6 +43,8 @@ class Repo:
         (root / LOCK_REL).write_text(FAKE_LOCK)  # the dependency snapshot is part of the CODE commit C
         shutil.copy(Path(__file__).resolve().parents[2] / ".gitattributes", root / ".gitattributes")  # the real -text rules
         (root / "python" / "scripts").mkdir(parents=True)
+        (root / "python" / "pacman_rl" / "window_diag.py").write_text("# fake diagnostic definition\n")
+        (root / "python" / "scripts" / "window_diagnostics_summary.py").write_text("# fake diagnostic summary\n")
         (root / "python" / "scripts" / "prereg_analysis.requirements.txt").write_text("numpy==0.0.0\n")  # the analysis NumPy pin (fake)
         self.cfg = json.loads(PR.FREEZE_FILE.read_text())
         self.cfg.update(status="frozen", machine_id="m", worker_count=2, hard_enabled=False)
@@ -62,6 +64,8 @@ class Repo:
     def write_texts(self):
         (self.root / "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md").write_text("SYNTHETIC FAKE preregistration text\n")
         (self.root / "docs/prereg/ANALYSIS_SPEC_v0.3.2.md").write_text("SYNTHETIC FAKE analysis specification text\n")
+        (self.root / "docs/prereg/CLAUDE_HANDOFF_v0.3.2.md").write_text("SYNTHETIC FAKE hand-over text\n")
+        (self.root / "docs/prereg/FREEZE_CHECKLIST.md").write_text("SYNTHETIC FAKE checklist\n")
 
     def fill_hashes(self):
         """The three configuration hashes, then the configuration file (its own hash is computed AFTER this)."""
@@ -82,7 +86,8 @@ class Repo:
         return man
 
     def extra_rels(self):
-        return [".gitattributes", "python/scripts/prereg_analysis.requirements.txt"]
+        return [".gitattributes", "python/scripts/prereg_analysis.requirements.txt", "docs/prereg/CLAUDE_HANDOFF_v0.3.2.md", "docs/prereg/FREEZE_CHECKLIST.md",
+                "python/pacman_rl/window_diag.py", "python/scripts/window_diagnostics_summary.py"]
 
     def freeze(self, manifest=True):
         """Fill code_commit = C, add the fake preregistration texts, the three hashes and the manifest, commit F."""
@@ -253,12 +258,25 @@ def test_manifest_always_freezes_the_two_texts_even_if_the_caller_forgets_them(r
     assert {"docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md", "docs/prereg/ANALYSIS_SPEC_v0.3.2.md"} <= set(obj["frozen_files"])
 
 
-@pytest.mark.parametrize("missing", ["PREREG_ARCH_NSTEP_v0.3.2.md", "ANALYSIS_SPEC_v0.3.2.md"])
-def test_manifest_refuses_when_a_mandatory_text_is_absent(repo, missing):
+MANDATORY_FILES = ["docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md", "docs/prereg/ANALYSIS_SPEC_v0.3.2.md", "docs/prereg/CLAUDE_HANDOFF_v0.3.2.md",
+                   "docs/prereg/FREEZE_CHECKLIST.md", "python/pacman_rl/window_diag.py", "python/scripts/window_diagnostics_summary.py",
+                   ".gitattributes", "python/scripts/prereg_analysis.requirements.txt"]
+
+
+@pytest.mark.parametrize("missing", MANDATORY_FILES)
+def test_manifest_refuses_when_a_mandatory_file_is_absent(repo, missing):
     repo.freeze()
-    (repo.root / "docs/prereg" / missing).unlink()
-    with pytest.raises(seal.ManifestError, match="mandatory"):
+    (repo.root / missing).unlink()
+    with pytest.raises(seal.ManifestError, match="mandatory|uncommitted changes"):  # a deleted code-side file is already an unclean freeze state
         seal.build_freeze_manifest(repo.root, "docs/prereg/matrix.csv", CFG_REL, ANALYSIS_REL, LOCK_REL)
+
+
+def test_manifest_lists_every_mandatory_file_with_its_actual_hash_and_never_itself(repo):
+    repo.freeze()
+    obj = seal.build_freeze_manifest(repo.root, "docs/prereg/matrix.csv", CFG_REL, ANALYSIS_REL, LOCK_REL)
+    for rel in MANDATORY_FILES + [ANALYSIS_REL, LOCK_REL, CFG_REL, "docs/prereg/matrix.csv"]:
+        assert obj["frozen_files"][rel] == sha_of(repo.root / rel), rel
+    assert MAN_REL not in obj["frozen_files"]  # no self reference: the manifest's own hash belongs to the external freeze record
 
 
 # ------------------------------------------------------------------ the final evaluation repeats the training gate

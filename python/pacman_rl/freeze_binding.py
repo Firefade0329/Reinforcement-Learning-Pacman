@@ -22,6 +22,9 @@ MATRIX_SHA256 = "5cbd4e7b2cf79f65c96180acfc61b1914fe2e8521c036218bc7c9a4db59f0df
 PREREG_REL = "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md"
 SPEC_REL = "docs/prereg/ANALYSIS_SPEC_v0.3.2.md"
 ATTR_REL = ".gitattributes"
+HANDOFF_REL = "docs/prereg/CLAUDE_HANDOFF_v0.3.2.md"
+CHECKLIST_REL = "docs/prereg/FREEZE_CHECKLIST.md"
+DIAG_CODE_RELS = ("python/pacman_rl/window_diag.py", "python/scripts/window_diagnostics_summary.py")  # B1/B2 definition + summary code
 LOCK_REL = "docs/prereg/dependency_lock.txt"            # the complete runtime snapshot (pip freeze --all of the accepted environment); part of the code commit C
 ANALYSIS_REQ_REL = "python/scripts/prereg_analysis.requirements.txt"  # the analysis NumPy pin: frozen separately, never a substitute for the snapshot
 CODE_SIDE_FILES = (LOCK_REL, ATTR_REL)                   # must already exist in C; F may not add or change them
@@ -29,7 +32,7 @@ LOCK_REQUIRED_PACKAGES = ("numpy", "torch", "matplotlib", "pytest")
 FREEZE_SCHEMA = "prereg-freeze-1"
 SPEC_VERSION = "0.3.2"
 # files that must be listed (and are then hashed) in every formal manifest, besides manifest.analysis_script_path / dependency_lock_path
-REQUIRED_FROZEN = (MATRIX_REL, CONFIG_REL, PREREG_REL, SPEC_REL, ATTR_REL, ANALYSIS_REQ_REL)  # .gitattributes: the -text rules are part of the byte contract
+REQUIRED_FROZEN = (MATRIX_REL, CONFIG_REL, PREREG_REL, SPEC_REL, HANDOFF_REL, CHECKLIST_REL, *DIAG_CODE_RELS, ATTR_REL, ANALYSIS_REQ_REL)  # .gitattributes: the -text rules are part of the byte contract
 HEX64 = set("0123456789abcdef")
 
 
