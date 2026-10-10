@@ -20,10 +20,11 @@ MATRIX_REL = "docs/prereg/matrix.csv"
 MATRIX_SHA256 = "5cbd4e7b2cf79f65c96180acfc61b1914fe2e8521c036218bc7c9a4db59f0dfe"
 PREREG_REL = "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md"
 SPEC_REL = "docs/prereg/ANALYSIS_SPEC_v0.3.2.md"
+ATTR_REL = ".gitattributes"
 FREEZE_SCHEMA = "prereg-freeze-1"
 SPEC_VERSION = "0.3.2"
 # files that must be listed (and are then hashed) in every formal manifest, besides manifest.analysis_script_path / dependency_lock_path
-REQUIRED_FROZEN = (MATRIX_REL, CONFIG_REL, PREREG_REL, SPEC_REL)
+REQUIRED_FROZEN = (MATRIX_REL, CONFIG_REL, PREREG_REL, SPEC_REL, ATTR_REL)  # .gitattributes: the -text rules are part of the byte contract
 HEX64 = set("0123456789abcdef")
 
 

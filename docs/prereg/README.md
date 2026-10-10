@@ -190,3 +190,15 @@ manifest entries of those files (all zeros is not a binding). A success leaves `
 checked in `results_prereg/preflight_log.jsonl` (training) and in the final-evaluation environment evidence. The manifest generator
 (`freeze-manifest`) applies the same rules to the manifest it is about to write and does not need an older manifest. The manifest does not list itself;
 its own hash belongs in the external freeze record. A manifest regenerated after F is a different freeze (F'), not F.
+
+## Byte contract: `-text` for every frozen file
+
+The only hashed object is a file's raw working-tree bytes (SHA-256; no newline normalisation, no BOM stripping, JSON not re-serialised). `.gitattributes`
+(committed with the code commit C, hashed itself, not one of the six files F may add or change) sets `-text` for `.gitattributes`, `docs/prereg/**`,
+`python/**/*.py` and the requirement files, so a fresh checkout returns the committed bytes whatever `core.autocrlf` is (the rehearsal found 3 of 7
+hashes changed on a Windows clone with `autocrlf=true`). `matrix.csv` keeps its registered CRLF bytes (`5cbd4e7b…0dfe`); the repository is NOT
+renormalised and no hash expectation was redefined. An existing working tree is not repaired by `-text`: the formal machine verifies a FRESH clone of
+F (every frozen file's bytes and hash, the manifest's own hash, the effective `text` attribute, `core.autocrlf` state; no absolute paths in the record).
+Any extra-frozen path must be covered by a rule before the freeze: the manifest generator refuses a frozen path without `-text`
+(`git check-attr text` must say `unset`). Tests: `tests/test_gitattributes.py` (temporary repositories, `core.autocrlf` true and false, the real matrix
+bytes, a control without the attributes that reproduces the rehearsal's finding).

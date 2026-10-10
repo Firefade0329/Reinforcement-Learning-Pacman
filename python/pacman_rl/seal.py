@@ -235,10 +235,21 @@ def build_freeze_manifest(root, matrix_path, config_path, analysis_script, depen
     state = freeze_state(root, code_commit, allow_dirty_freeze_files=True)
     if state["problems"]:
         raise ManifestError("not a valid freeze state:\n  - " + "\n  - ".join(state["problems"]))
-    rels = list(dict.fromkeys(str(Path(p).as_posix()) for p in (matrix_path, config_path, analysis_script, dependency_lock, *REQUIRED_FROZEN_DOCS, *extra_frozen)))
+    from .freeze_binding import REQUIRED_FROZEN
+
+    rels = list(dict.fromkeys(str(Path(p).as_posix()) for p in (matrix_path, config_path, analysis_script, dependency_lock, *REQUIRED_FROZEN, *extra_frozen)))
     missing = [r for r in rels if not (root / r).is_file()]
     if missing:
         raise ManifestError(f"frozen files missing (the preregistration and analysis-specification texts are mandatory): {missing}")
+    import subprocess
+
+    no_rule = []
+    for r in rels:  # every frozen path must keep its raw bytes on checkout: an explicit -text rule in .gitattributes
+        out = subprocess.run(["git", "check-attr", "text", "--", r], cwd=root, capture_output=True, text=True)
+        if out.returncode != 0 or not out.stdout.strip().endswith(": text: unset"):
+            no_rule.append(r)
+    if no_rule:
+        raise ManifestError(f"frozen files without a -text rule in .gitattributes (their checked-out bytes could change with core.autocrlf): {no_rule}")
     devs = list(deviations)
     for i, d in enumerate(devs):  # declared deviations (id, description, source) are copied verbatim into the analysis report; nothing is inferred
         if not isinstance(d, dict) or set(d) != {"id", "description", "source"} or not all(isinstance(v, str) and v for v in d.values()):

@@ -249,3 +249,22 @@ def test_generator_refuses_a_configuration_whose_hash_fields_do_not_match_the_fi
     r.write_cfg()
     with pytest.raises(seal.ManifestError, match=field):
         generate(r)
+
+
+def test_gitattributes_is_a_required_frozen_file(repo):
+    repo.amend_manifest(lambda m: m["frozen_files"].pop(".gitattributes"))
+    with pytest.raises(runner.Refused, match=r"required frozen file '\.gitattributes' is not listed"):
+        train_entry(repo)
+
+
+def test_generator_refuses_a_frozen_path_that_has_no_text_rule(tmp_path, monkeypatch):
+    r = Repo(tmp_path / "g")
+    monkeypatch.setattr(PR, "MATRIX_FILE", r.root / "docs/prereg/matrix.csv")
+    (r.root / "tools").mkdir()
+    (r.root / "tools" / "extra.txt").write_text("outside every -text rule\n")
+    r.git("add", "-A")
+    r.git("commit", "-qm", "extra")
+    r.C = r.git("rev-parse", "HEAD")
+    prepare(r)
+    with pytest.raises(seal.ManifestError, match=r"without a -text rule.*tools/extra.txt"):
+        generate(r, extra_frozen=["tools/extra.txt"])

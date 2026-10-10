@@ -1,0 +1,9 @@
+# Files whose SHA-256 is frozen (docs/prereg/ materials, the python sources, the requirement files) keep their exact bytes on every checkout:
+# no end-of-line conversion on any platform, whatever the user's core.autocrlf is.  (-text is not "binary": diffs and review work as usual.)
+# Do NOT renormalize the repository: matrix.csv is registered with its CRLF bytes (SHA-256 5cbd4e7b...0dfe).  Any new extra-frozen path
+# must be covered by a rule here before the freeze.
+/.gitattributes -text
+/docs/prereg/** -text
+/python/**/*.py -text
+/python/*requirements*.txt -text
+/python/scripts/*requirements*.txt -text

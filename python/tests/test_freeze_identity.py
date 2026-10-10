@@ -41,6 +41,7 @@ class Repo:
         shutil.copy(PR.MATRIX_FILE, root / "docs" / "prereg" / "matrix.csv")
         (root / "docs" / "PLAN.md").write_text("plan\n")
         (root / LOCK_REL).write_text(FAKE_LOCK)  # the dependency snapshot is part of the CODE commit C
+        shutil.copy(Path(__file__).resolve().parents[2] / ".gitattributes", root / ".gitattributes")  # the real -text rules
         self.cfg = json.loads(PR.FREEZE_FILE.read_text())
         self.cfg.update(status="frozen", machine_id="m", worker_count=2, hard_enabled=False)
         self.cfg["to_fill_at_freeze"].update({k: "x" for k in runner.TO_FILL}, power_and_sleep_settings_confirmed=True)
@@ -79,7 +80,7 @@ class Repo:
         return man
 
     def extra_rels(self):
-        return []
+        return [".gitattributes"]
 
     def freeze(self, manifest=True):
         """Fill code_commit = C, add the fake preregistration texts, the three hashes and the manifest, commit F."""
