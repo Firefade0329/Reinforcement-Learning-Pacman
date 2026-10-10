@@ -274,3 +274,14 @@ def test_the_runner_gate_does_not_depend_on_the_callers_environment(repo, monkey
     monkeypatch.setenv("PACMAN_RESULTS_DIR", "/nonexistent")  # ...and a test that sets it itself still sees the refusal
     with pytest.raises(runner.Refused, match="PACMAN_RESULTS_DIR"):
         preflight(repo)
+
+
+def test_declared_deviations_are_validated_and_recorded_in_the_manifest(repo):
+    repo.freeze()
+    args = (repo.root, "docs/prereg/matrix.csv", CFG_REL, "python/pacman_rl/m.py", "python/pacman_rl/m.py")
+    dev = {"id": "D1", "description": "synthetic", "source": "docs/prereg/FREEZE_CHECKLIST.md#C3"}
+    assert seal.build_freeze_manifest(*args, deviations=[dev])["deviations"] == [dev]
+    assert "deviations" not in seal.build_freeze_manifest(*args)
+    for bad in ({"id": "D1", "description": "x"}, {**dev, "extra": "y"}, {**dev, "source": ""}, "text"):
+        with pytest.raises(seal.ManifestError, match="deviation 0"):
+            seal.build_freeze_manifest(*args, deviations=[bad])

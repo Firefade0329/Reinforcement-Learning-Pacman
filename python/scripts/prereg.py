@@ -409,6 +409,7 @@ def main(argv=None):
     p.add_argument("--analysis-script", required=True, help="path relative to the repository root")
     p.add_argument("--dependency-lock", required=True, help="path relative to the repository root")
     p.add_argument("--extra-frozen", nargs="*", default=[], help="further files to freeze (the preregistration documents), relative paths")
+    p.add_argument("--deviations-file", type=Path, help="JSON array of declared deviations [{id, description, source}] to record in the manifest")
     p.add_argument("--out", type=Path, default=PR.PREREG_DIR / "freeze_manifest.json")
     p = sub.add_parser("smoke")
     p.add_argument("--profile", choices=list(PROFILES), default="quick")
@@ -456,7 +457,8 @@ def main(argv=None):
 
         try:
             obj = seal.build_freeze_manifest(ROOT, "docs/prereg/matrix.csv", "docs/prereg/frozen_config_v0.3.2.json", a.analysis_script,
-                                             a.dependency_lock, a.extra_frozen)
+                                             a.dependency_lock, a.extra_frozen,
+                                             deviations=json.loads(a.deviations_file.read_text(encoding="utf-8")) if a.deviations_file else ())
         except Exception as e:  # noqa: BLE001
             raise Refused(str(e))
         a.out.write_text(json.dumps(obj, indent=1, sort_keys=True), encoding="utf-8")

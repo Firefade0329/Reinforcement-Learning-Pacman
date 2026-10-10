@@ -209,6 +209,22 @@ def validate_inputs(manifest_path: Path, input_root: Path, project_root: Path | 
             or seal.get("all_checkpoint_checks_passed") is not True or seal.get("runs") != names or not isinstance(seal.get("attempts"), list)
             or not isinstance(seal.get("files"), dict)):
         raise AnalysisError("E_MANIFEST", "evaluation seal is not a valid seal for this manifest / mode / run list", path=manifest["seal_path"])
+    for i, a in enumerate(seal["attempts"]):  # each failed attempt is an object about one of the 30 runs; the report lists them one by one
+        jp = f"$.attempts[{i}]"
+        a = _obj(a, manifest["seal_path"], None, jp)
+        if _str(_req(a, "run", manifest["seal_path"], None, jp), manifest["seal_path"], None, f"{jp}.run") not in names:
+            raise AnalysisError("E_MANIFEST", "an archived attempt names a run that is not in the matrix", path=manifest["seal_path"], json_path=f"{jp}.run", actual=a["run"])
+        if not is_int(_req(a, "attempt", manifest["seal_path"], None, jp)) or a["attempt"] < 1:
+            raise AnalysisError("E_FIELD_TYPE", "attempt must be an integer >= 1", path=manifest["seal_path"], json_path=f"{jp}.attempt", actual=a["attempt"])
+        _str(_req(a, "reason", manifest["seal_path"], None, jp), manifest["seal_path"], None, f"{jp}.reason")
+    declared = manifest.get("deviations", [])  # optional: deviations declared in the freeze record; the script never invents any
+    if not isinstance(declared, list):
+        raise AnalysisError("E_FIELD_TYPE", "deviations must be an array", path=manifest_path.name, json_path="$.deviations", actual=type(declared).__name__)
+    for i, dv in enumerate(declared):
+        jp = f"$.deviations[{i}]"
+        dv = _obj(dv, manifest_path.name, None, jp)
+        for k in ("id", "description", "source"):
+            _str(_req(dv, k, manifest_path.name, None, jp), manifest_path.name, None, f"{jp}.{k}")
     rels = ["config.json", "summary.json", "last/standard.json", "best/standard.json"] + (["last/hard.json"] if hard else [])
     required = {f"{n}/{rel}" for n in names for rel in rels}
     if set(seal["files"]) != required:
@@ -538,8 +554,14 @@ def analyze_arrays(ctx):
                 rates = {}
                 for k in ("died", "won", "truncated", "steps"):
                     per = [int(a_[k][ia[a], ni, si].sum()) for si in range(5)]
-                    rate_stat = vec_stats(per, 300, f"{q}.{k}_{'rate' if k != 'steps' else 'mean'}.{a}.n{n}", f"{k}_sum_over_300", [mid])
-                    rates[k + ("_rate" if k != "steps" else "_mean")] = {"per_model": rate_stat["raw_values"], "mean": rate_stat["mean"], "sd_ddof1": rate_stat["sd_ddof1"]}
+                    key = k + ("_rate" if k != "steps" else "_mean")
+                    rate_stat = vec_stats(per, 300, f"{q}.{key}.{a}.n{n}", f"{k}_sum_over_300", [mid])
+                    rates[key] = {"per_model": rate_stat["raw_values"], "mean": rate_stat["mean"], "sd_ddof1": rate_stat["sd_ddof1"],
+                                  "metric_id": rate_stat["metric_id"], "formula_id": rate_stat["formula_id"], "training_seeds": rate_stat["training_seeds"],
+                                  "integer_numerators": per, "denominator": 300, "record_field": k, "source_metric_ids": [mid],
+                                  "sources": [{"run_name": src_runs[(a, n, s)], "file": f"{src_runs[(a, n, s)]}/{kind}",
+                                               "sha256": ctx["files"][f"{src_runs[(a, n, s)]}/{kind}"], "test_seeds": "30000..30299",
+                                               "integer_sum": per[si], "episodes": 300} for si, s in enumerate(SEEDS)]}
                 e["rates_steps"][f"{a}.n{n}"] = rates
         d = {a: [int(S[q][ia[a], 0, si] - S[q][ia[a], 1, si]) for si in range(5)] for a in ARCHS}
         def fin(key, num, fid, srcs):
@@ -591,7 +613,8 @@ def analyze_arrays(ctx):
                    "note": "bootstrap95 vs t97.5 are different coverage levels: not a same-level re-test"},
             "direction_signal": {a: ("supported_signal" if (L["d"][a]["mean"] >= 10 and L["d"][a]["ci95_t"][0] > 0 and L["d"][a]["positive_count"] >= 4) else "insufficient_evidence") for a in ARCHS},
             "interaction_signal": ("supported_signal" if (abs(c["mean"]) >= 10 and (c["ci95_t"][0] > 0 or c["ci95_t"][1] < 0)) else "insufficient_evidence"),
-            "res4_sign_test": sign_test(d_res4["integer_numerators"])}
+            "res4_sign_test": {**sign_test(d_res4["integer_numerators"]), "source_metric_id": d_res4["metric_id"], "formula_id": "exact_one_sided_binomial_sign_test",
+                               "integer_numerators": d_res4["integer_numerators"]}}
     prim["interaction_signal_bootstrap_contains_zero"] = bool(prim["interaction_signal"] == "supported_signal" and c["ci95_cross_bootstrap"][0] <= 0 <= c["ci95_cross_bootstrap"][1])
     prim["interaction_signal_method_sensitive_zero"] = prim["interaction_signal_bootstrap_contains_zero"]
     return ep, expl, prim, names, vals, index_sha
@@ -607,20 +630,40 @@ def vec_row(st):
             f"[{fnum(st['ci95_t'][0])}, {fnum(st['ci95_t'][1])}] | [{fnum(st['ci95_cross_bootstrap'][0])}, {fnum(st['ci95_cross_bootstrap'][1])}] |")
 
 
-def build_report(ctx, ep, expl, prim, index_sha):
+def model_table(e):
+    rows = ["| config | seed100 | seed101 | seed102 | seed103 | seed104 | mean | sd | death rate | win rate | truncated rate | steps |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    for key, st in e["model_metrics"].items():
+        rt = e["rates_steps"][key]
+        rows.append(f"| {key} | " + " | ".join(fnum(v) for v in st["raw_values"]) + f" | {fnum(st['mean'])} | {fnum(st['sd_ddof1'])} | {fnum(rt['died_rate']['mean'])} | {fnum(rt['won_rate']['mean'])} | {fnum(rt['truncated_rate']['mean'])} | {fnum(rt['steps_mean']['mean'])} |")
+    return rows
+
+
+def rate_table(e):
+    """Per-seed rates and mean steps (5 training-seed values each) with their integer numerators: the counts behind the configuration means."""
+    rows = ["| config | quantity | seed100 | seed101 | seed102 | seed103 | seed104 | mean | sd | integer sums / 300 |", "|---|---|---|---|---|---|---|---|---|---|"]
+    for key, rt in e["rates_steps"].items():
+        for qn, st in rt.items():
+            rows.append(f"| {key} | {qn} | " + " | ".join(fnum(v) for v in st["per_model"]) + f" | {fnum(st['mean'])} | {fnum(st['sd_ddof1'])} | {st['integer_numerators']} |")
+    return rows
+
+
+def opt(f):
+    return "n/a" if f["value"] is None else fnum(f["value"], 1)
+
+
+def build_report(ctx, ep, expl, prim, index_sha, res, devs):
     mode = ctx["mode"]
     out = [f"# Architecture x n-step: analysis report (spec {SPEC_VERSION})", "",
            ("**SYNTHETIC DATA: this is an acceptance run of the analysis code, not a result.**" if mode == "synthetic" else "**FORMAL ANALYSIS of the frozen study.**"), "",
            "## 1. Frozen identity and integrity", f"- code commit `{ctx['manifest']['code_commit']}`; mode `{mode}`; hard scenario: {'enabled' if ctx['hard'] else 'not run'}",
            f"- 30 runs, {len(ctx['files'])} evaluation files x 300 unique test seeds 30000..30299, 15 initial-weight pairs equal, validation 15 x 50 each (all checked before any statistic)",
-           f"- failed attempts archived (seal): {len(ctx['seal']['attempts'])}; bootstrap index SHA-256 `{index_sha}`", ""]
+           f"- failed attempts archived (seal): {len(ctx['seal']['attempts'])}; bootstrap index SHA-256 `{index_sha}`",
+           f"- deviations on record: {len(devs)}" + ("" if devs else " (none declared in the freeze manifest, none archived in the seal; the script does not infer deviations)")]
+    out += [f"  - `{d['id']}` ({d['origin']}): {d['description']} [source: {d['source']}]" for d in devs]
     L = ep["last_standard"]
-    out += ["## 2. Primary endpoint: last checkpoint, standard scenario (mean score per training seed)", "",
-            "| config | seed100 | seed101 | seed102 | seed103 | seed104 | mean | sd | death rate | win rate | truncated rate | steps |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
-    for key, st in L["model_metrics"].items():
-        rt = L["rates_steps"][key]
-        out.append(f"| {key} | " + " | ".join(fnum(v) for v in st["raw_values"]) + f" | {fnum(st['mean'])} | {fnum(st['sd_ddof1'])} | {fnum(rt['died_rate']['mean'])} | {fnum(rt['won_rate']['mean'])} | {fnum(rt['truncated_rate']['mean'])} | {fnum(rt['steps_mean']['mean'])} |")
+    out += ["", "## 2. Primary endpoint: last checkpoint, standard scenario (mean score per training seed)", ""] + model_table(L)
     hdr = ["| effect | seed100 | seed101 | seed102 | seed103 | seed104 | mean | sd | pos/zero/neg | 95% t | 95% cross-bootstrap |", "|---|---|---|---|---|---|---|---|---|---|---|"]
+    hdr_r = ["| effect | seed100 | seed101 | seed102 | seed103 | seed104 | mean | sd | pos/zero/neg | 95% t | 95% cross-bootstrap | order label |", "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     out += ["", "## 3. Effects n=1 minus n=3 (d), interactions (c primary; u, v auxiliary), last/standard", ""] + hdr
     for st in list(L["effects"]["d"].values()) + [L["effects"][k] for k in ("c", "u", "v")]:
         out.append(vec_row(st))
@@ -630,23 +673,37 @@ def build_report(ctx, ep, expl, prim, index_sha):
             "- direction signals: " + ", ".join(f"{a}: {v}" for a, v in prim["direction_signal"].items()), f"- interaction signal: {prim['interaction_signal']} (bootstrap95 contains zero: {prim['interaction_signal_bootstrap_contains_zero']})",
             "- sensitivity (interval sign, t95 vs bootstrap95): " + "; ".join(f"{k}: {v['sensitivity']['interval_sign_t95']}/{v['sensitivity']['interval_sign_bootstrap95']}" for k, v in {**{f'd.{a}': L['effects']['d'][a] for a in ARCHS}, 'c': L['effects']['c'], 'u': L['effects']['u'], 'v': L['effects']['v']}.items()),
             f"- Res4 one-sided exact sign test: N_eff={prim['res4_sign_test']['n_effective']}, K={prim['res4_sign_test']['k_positive']}, zeros={prim['res4_sign_test']['zero_count']}, p={prim['res4_sign_test']['numerator']}/{prim['res4_sign_test']['denominator']}={prim['res4_sign_test']['p']:.6g}, status={prim['res4_sign_test']['status']} (a direction test, not a mean test, and it does not decide H1/H2)", ""]
-    out += ["## 5. Exploratory and secondary endpoints (all reported, none selected)", "", "### n=1: res8 minus cnn2 (r)", "", *hdr]
+    out += ["## 5. Exploratory and secondary endpoints (all reported, none selected)", "", "### last_standard: per-seed death / win / truncation rates and mean steps", "", *rate_table(L), "",
+            "### n=1: res8 minus cnn2 (r)", "", *hdr_r]
     for q in ep:
         out.append(vec_row(ep[q]["effects"]["r"]) + f" {ep[q]['effects']['r']['label']} |")
     for q in ep:
         if q != "last_standard":
-            out += ["", f"### {q}: d / c / u / v", "", *hdr] + [vec_row(st) for st in list(ep[q]["effects"]["d"].values()) + [ep[q]["effects"][k] for k in ("c", "u", "v")]]
+            out += ["", f"### {q}: model scores, rates and steps", "", *model_table(ep[q]), "", f"### {q}: per-seed rates and mean steps", "", *rate_table(ep[q]),
+                    "", f"### {q}: d / c / u / v", "", *hdr] + [vec_row(st) for st in list(ep[q]["effects"]["d"].values()) + [ep[q]["effects"][k] for k in ("c", "u", "v")]]
     if "best_minus_last" in expl and expl["best_minus_last"]["b"]:
-        out += ["", "### best minus last (b per configuration) and change of the n-step effect (g)", f"(selection device {expl['best_minus_last']['selection_device']}, test device {expl['best_minus_last']['test_device']})", "", *hdr]
+        out += ["", "### best minus last (b per configuration) and change of the n-step effect (g)", f"(selection device {expl['best_minus_last']['selection_device']}, test device {expl['best_minus_last']['test_device']}; best-selected validation steps per configuration are in analysis.json)", "", *hdr]
         out += [vec_row(st) for st in expl["best_minus_last"]["b"].values()] + [vec_row(st) for st in expl["best_minus_last"]["g"].values()]
     if not ctx["hard"]:
         out += ["", "hard scenario: not run (frozen configuration)."]
-    out += ["", "## 6. Resource records (from summary.json)", "", "| run | replay.size at end | actual_updates | best step |", "|---|---|---|---|"]
-    for n in ctx["names"]:
-        s = ctx["docs"][f"{n}/summary.json"]
-        out.append(f"| {n} | {s['replay']['size']} | {s['actual_updates']} | {s['checkpoints']['best']['step']} |")
+    out += ["", "## 6. Resource records (from summary.json; n/a = null in the file, reason in analysis.json)", "",
+            "| run | replay.size at end | actual_updates | best step | minutes | peak working set MB | peak commit MB | CUDA max allocated MB | CUDA max reserved MB | failed attempts |",
+            "|---|---|---|---|---|---|---|---|---|---|"]
+    for r in res:
+        f = r["resources"]
+        out.append(f"| {r['run_name']} | {r['replay_size']} | {r['actual_updates']} | {r['best_step']} | {opt(f['minutes'])} | {opt(f['peak_working_set_mb'])} | {opt(f['peak_commit_mb'])} | "
+                   f"{opt(f['cuda_max_allocated_mb'])} | {opt(f['cuda_max_reserved_mb'])} | {len(r['attempts'])} |")
+    att = [a for r in res for a in r["attempts"]]
+    if att:
+        out += ["", "Archived failed attempts (evaluation seal):", "", "| run | attempt | archived (UTC) | reason | files archived |", "|---|---|---|---|---|"]
+        out += [f"| {a['run']} | {a['attempt']} | {a.get('archived_utc', 'n/a')} | {a['reason']} | {len(a['files']) if isinstance(a.get('files'), list) else 'n/a'} |" for a in att]
+    else:
+        out += ["", "No failed attempts were archived."]
     out += ["", "replay.size is the buffer occupancy at the end (capped at 100000), not cumulative inserts; n=3 holds up to 16 pending tail items with 8 active environments.", "",
-            "## 7. Provenance and limits", "- every number in analysis.json carries `source_metric_ids`, a `formula_id` and the integer numerators; the evaluation files are listed with SHA-256 in input_manifest.json.",
+            "## 7. Number sources and limits",
+            "- Statistic objects in analysis.json carry `metric_id`, `formula_id`, `source_metric_ids` and the integer numerators; every model score and every rate / step mean lists, per training seed, its run, evaluation file, SHA-256, the 300 test seeds and the integer sum it came from.",
+            "- Resource numbers cite the summary.json field they were read from (`resource_records[].resources.<field>.source`); constants (t quantiles, B, thresholds, RNG) are under `parameters`, taken from the frozen protocol; labels are computed from the unrounded values before formatting.",
+            "- The evaluation files read, with SHA-256, are listed in input_manifest.json; tables here show 4 decimals only.",
             "- limits: 5 training seeds; one map; privileged input (BFS distance fields); same budget is not the same compute; model selection on GPU vs test on CPU; the t intervals assume near-normal differences, which 5 seeds cannot check; the bootstrap is a sensitivity analysis and does not add training seeds.",
             "- this report makes no statement about mechanisms."]
     return "\n".join(out) + "\n"
@@ -660,6 +717,50 @@ def write_csv(path, names, vals):
         w.writerow(["replicate_index"] + order)
         for b in range(B):
             w.writerow([b] + [repr(float(vals[b, i])) for i in idx])
+
+
+RESOURCE_FIELDS = ("minutes", "peak_working_set_mb", "peak_commit_mb", "cuda_max_allocated_mb", "cuda_max_reserved_mb")
+MEMORY_FIELDS = RESOURCE_FIELDS[1:]
+
+
+def resource_records(ctx):
+    """Per run: the budget / occupancy fields and every optional resource field of summary.json, each with its source; an absent or null
+    optional field is reported as null WITH a reason (the summary's own peak_memory_error when it gave one), never as NaN or a guess.
+    Failed attempts archived for the run are listed with their details."""
+    attempts = {}
+    for i, a in enumerate(ctx["seal"]["attempts"]):
+        attempts.setdefault(a["run"], []).append({**a, "source": f"{ctx['manifest']['seal_path']}#attempts[{i}]"})
+    out = []
+    for n in ctx["names"]:
+        s = ctx["docs"][f"{n}/summary.json"]
+        srel = f"{n}/summary.json"
+        fields = {}
+        for k in RESOURCE_FIELDS:
+            v = s.get(k)
+            if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0):
+                raise AnalysisError("E_FIELD_TYPE", f"summary {k} must be a non-negative number or null", path=srel, run_name=n, json_path=f"$.{k}", actual=v)
+            if v is None:
+                err = s.get("peak_memory_error") if k in MEMORY_FIELDS else None
+                reason = ("null in summary.json" if k in s else "field absent from summary.json") + (f"; peak_memory_error: {err}" if err else "")
+                fields[k] = {"value": None, "reason": reason, "source": f"{srel}#{k}"}
+            else:
+                fields[k] = {"value": v, "reason": None, "source": f"{srel}#{k}"}
+        out.append({"run_name": n, "replay_size": s["replay"]["size"], "actual_updates": s["actual_updates"], "total_env_steps": s["total_env_steps"],
+                    "best_step": s["checkpoints"]["best"]["step"], "source": srel, "sources": {"replay_size": f"{srel}#replay.size", "actual_updates": f"{srel}#actual_updates",
+                    "total_env_steps": f"{srel}#total_env_steps", "best_step": f"{srel}#checkpoints.best.step"}, "resources": fields,
+                    "attempts": attempts.get(n, [])})
+    return out
+
+
+def deviations(ctx):
+    """Only what a record states: deviations declared in the freeze manifest (copied verbatim) and every archived failed attempt of the
+    seal.  The script does not infer deviations from the data."""
+    out = [{"id": d["id"], "origin": "freeze_manifest", "description": d["description"], "source": d["source"]} for d in ctx["manifest"].get("deviations", [])]
+    for i, a in enumerate(ctx["seal"]["attempts"]):
+        out.append({"id": f"failed_attempt:{a['run']}:{a['attempt']}", "origin": "evaluation_seal", "run_name": a["run"],
+                    "description": f"attempt {a['attempt']} of {a['run']} was archived and the run restarted from scratch: {a['reason']}",
+                    "source": f"{ctx['manifest']['seal_path']}#attempts[{i}]"})
+    return out
 
 
 def analyze(manifest: Path, input_root: Path, output_dir: Path, mode: str, project_root: Path | None = None) -> dict:
@@ -682,9 +783,8 @@ def analyze(manifest: Path, input_root: Path, output_dir: Path, mode: str, proje
                        "quantile_method": "linear (type 7)", "index_stream_sha256": index_sha, "index_stream_sha256_expected": EXPECTED_INDEX_SHA},
                        "magnitude_threshold": 10},
         "endpoints": ep, "primary_decisions": prim, "exploratory": expl,
-        "resource_records": [{"run_name": n, "replay_size": ctx["docs"][f"{n}/summary.json"]["replay"]["size"], "actual_updates": ctx["docs"][f"{n}/summary.json"]["actual_updates"],
-                              "best_step": ctx["docs"][f"{n}/summary.json"]["checkpoints"]["best"]["step"], "source": f"{n}/summary.json"} for n in ctx["names"]],
-        "deviations": [], "limitations": ["5 training seeds", "single map", "privileged BFS-field input", "equal budget is not equal compute", "GPU selection vs CPU test devices", "t intervals assume near-normal differences"],
+        "resource_records": resource_records(ctx),
+        "deviations": deviations(ctx), "limitations": ["5 training seeds", "single map", "privileged BFS-field input", "equal budget is not equal compute", "GPU selection vs CPU test devices", "t intervals assume near-normal differences"],
     }
     input_manifest = {"mode": mode, "files": {k: {"sha256": v} for k, v in sorted(ctx["files"].items())}, "seal_sha256": ctx["seal_sha"],
                       "config_and_summary_files": {k: v for k, v in ctx["seal"]["files"].items() if k.endswith(("config.json", "summary.json"))}}
@@ -693,7 +793,7 @@ def analyze(manifest: Path, input_root: Path, output_dir: Path, mode: str, proje
     tmp = Path(tempfile.mkdtemp(prefix=".analysis_tmp_", dir=out_parent))
     try:
         (tmp / "analysis.json").write_text(json.dumps(analysis, indent=1), encoding="utf-8")
-        (tmp / "REPORT.md").write_text(build_report(ctx, ep, expl, prim, index_sha), encoding="utf-8")
+        (tmp / "REPORT.md").write_text(build_report(ctx, ep, expl, prim, index_sha, analysis["resource_records"], analysis["deviations"]), encoding="utf-8")
         (tmp / "bootstrap_indices.sha256").write_text(f"{index_sha}  bootstrap_index_stream_12200000_bytes\n", encoding="utf-8")
         (tmp / "input_manifest.json").write_text(json.dumps(input_manifest, indent=1), encoding="utf-8")
         write_csv(tmp / "bootstrap_replicates.csv", names, vals)

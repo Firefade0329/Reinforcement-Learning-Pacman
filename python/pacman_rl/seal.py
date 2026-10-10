@@ -219,7 +219,7 @@ def build_evaluation_seal(results_dir, rows, freeze, pretest_manifest, freeze_ma
             "files": files, "attempts": attempts}
 
 
-def build_freeze_manifest(root, matrix_path, config_path, analysis_script, dependency_lock, extra_frozen=(), *, spec_version="0.3.2") -> dict:
+def build_freeze_manifest(root, matrix_path, config_path, analysis_script, dependency_lock, extra_frozen=(), *, spec_version="0.3.2", deviations=()) -> dict:
     """The freeze manifest of ANALYSIS_SPEC section 1.1.  `code_commit` is the code commit C named by the frozen configuration (the
     commit holding this manifest, F, cannot be recorded in it).  The working copy must be a legitimate freeze state of C: HEAD is C
     or a descendant, python/ identical, only freeze material changed -- uncommitted freeze files are fine here, that is the point at
@@ -238,7 +238,14 @@ def build_freeze_manifest(root, matrix_path, config_path, analysis_script, depen
     missing = [r for r in rels if not (root / r).is_file()]
     if missing:
         raise ManifestError(f"frozen files missing (the preregistration and analysis-specification texts are mandatory): {missing}")
-    return {"schema_version": FREEZE_SCHEMA, "synthetic": False, "complete": True, "spec_version": spec_version, "code_commit": code_commit,
+    devs = list(deviations)
+    for i, d in enumerate(devs):  # declared deviations (id, description, source) are copied verbatim into the analysis report; nothing is inferred
+        if not isinstance(d, dict) or set(d) != {"id", "description", "source"} or not all(isinstance(v, str) and v for v in d.values()):
+            raise ManifestError(f"deviation {i} must be an object with non-empty string fields id, description, source")
+    manifest = {"schema_version": FREEZE_SCHEMA, "synthetic": False, "complete": True, "spec_version": spec_version, "code_commit": code_commit,
             "project_root": ".", "matrix_path": str(Path(matrix_path).as_posix()), "config_path": str(Path(config_path).as_posix()),
             "analysis_script_path": str(Path(analysis_script).as_posix()), "dependency_lock_path": str(Path(dependency_lock).as_posix()),
             "frozen_files": {r: _sha_file(root / r) for r in rels}, "seal_path": "results_prereg/evaluation_seal.json"}
+    if devs:
+        manifest["deviations"] = devs
+    return manifest

@@ -40,10 +40,16 @@ def typed(row):
 
 
 class Study:
-    def __init__(self, root: Path, d=None, score_fn=None, hard=False, hard_d=None, formal=False):
+    def __init__(self, root: Path, d=None, score_fn=None, hard=False, hard_d=None, formal=False, best_fn=None, hard_fn=None, rec_fn=None,
+                 best_step_fn=None, summary_fn=None, attempts=(), deviations=None):
         """formal=True builds the same fake study but labelled for formal mode (synthetic=false, status 'frozen', texts frozen) so that the
-        formal-mode gates can be tested; the DATA are still invented."""
+        formal-mode gates can be tested; the DATA are still invented.
+        best_fn(a, n, si, e) / hard_fn(a, n, si, e): scores of the best checkpoint / of the hard scenario (default: best equals last, hard = d-based);
+        best_step_fn(a, n, si): the selected validation step; rec_fn(kind, a, n, si, e) -> dict of record overrides (steps/died/won/truncated/score)
+        for kind in last / best / hard; summary_fn(name, summary) edits the run summary; attempts / deviations: seal attempts / manifest deviations."""
         self.root, self.hard, self.formal = Path(root), hard, formal
+        self.best_fn, self.hard_fn, self.rec_fn, self.best_step_fn, self.summary_fn = best_fn, hard_fn, rec_fn, best_step_fn, summary_fn
+        self.attempts, self.deviations = list(attempts), deviations
         self.d = d or {a: [0] * 5 for a in ARCHS}
         self.score_fn = score_fn
         self.hard_d = hard_d or self.d
@@ -53,15 +59,23 @@ class Study:
         self.build()
 
     # --- scores
-    def score(self, a, n, si, e, hard=False):
+    def score(self, a, n, si, e, hard=False, best=False):
+        if hard and self.hard_fn:
+            return self.hard_fn(a, n, si, e)
+        if best and self.best_fn:
+            return self.best_fn(a, n, si, e)
         if self.score_fn:
             return self.score_fn(a, n, si, e)
         return 100 + (0 if n == 3 else (self.hard_d if hard else self.d)[a][si])
 
-    def records(self, a, n, si, hard=False):
+    def records(self, a, n, si, hard=False, best=False):
         recs = []
+        kind = "hard" if hard else "best" if best else "last"
         for e in range(300):
-            recs.append({"seed": 30000 + e, "score": self.score(a, n, si, e, hard), "steps": 100, "died": True, "won": False, "truncated": False})
+            rec = {"seed": 30000 + e, "score": self.score(a, n, si, e, hard, best), "steps": 100, "died": True, "won": False, "truncated": False}
+            if self.rec_fn:
+                rec.update(self.rec_fn(kind, a, n, si, e) or {})
+            recs.append(rec)
         return recs
 
     # --- files
@@ -93,18 +107,23 @@ class Study:
         write_json(d / "config.json", cfg)
         init = hashlib.sha256(f"init-{a}-{s}".encode()).hexdigest()
         w = hashlib.sha256(f"weights-{name}".encode()).hexdigest()
+        distinct = self.best_fn is not None  # a best checkpoint with its own weights and its own evaluation
+        wb = hashlib.sha256(f"best-weights-{name}".encode()).hexdigest() if distinct else w
+        bstep = self.best_step_fn(a, n, si) if self.best_step_fn else (100000 if distinct else 20000)
         summary = {"run_name": name, "total_env_steps": 300000, "replay": {"size": 100000}, "actual_updates": 74000,
                    "validation_steps": list(range(20000, 300001, 20000)), "validation_episodes_each": 50, "initial_state_dict_sha256": init,
-                   "checkpoints": {"last": {"step": 300000, "weights_sha256": w}, "best": {"step": 20000, "weights_sha256": w}}}
+                   "checkpoints": {"last": {"step": 300000, "weights_sha256": w}, "best": {"step": bstep, "weights_sha256": wb}}}
+        if self.summary_fn:
+            self.summary_fn(name, summary)
         write_json(d / "summary.json", summary)
-        for label in ("last", "best"):
-            self.write_eval(d / label / "standard.json", r, label, "standard", self.records(a, n, si), w, reused=(label == "best"))
+        self.write_eval(d / "last" / "standard.json", r, "last", "standard", self.records(a, n, si), w)
+        self.write_eval(d / "best" / "standard.json", r, "best", "standard", self.records(a, n, si, best=True), wb, reused=not distinct, step=bstep)
         if self.hard:
             self.write_eval(d / "last" / "hard.json", r, "last", "hard", self.records(a, n, si, hard=True), w)
 
-    def write_eval(self, path, r, label, scenario, records, w, reused=False):
+    def write_eval(self, path, r, label, scenario, records, w, reused=False, step=None):
         meta = {"synthetic": not self.formal, "run_name": r["run_name"], "arch": r["arch"], "n_step": r["n_step"], "train_seed": r["seed"], "checkpoint": label,
-                "checkpoint_step": 300000 if label == "last" else 20000, "weights_sha256": w, "code_commit": COMMIT, "scenario": scenario,
+                "checkpoint_step": 300000 if label == "last" else (step if step is not None else 20000), "weights_sha256": w, "code_commit": COMMIT, "scenario": scenario,
                 "device": "cpu", "torch_threads": 1}
         if reused:
             meta["reused_from"] = "last"
@@ -120,6 +139,8 @@ class Study:
                     "project_root": str(self.root), "matrix_path": "docs/prereg/matrix.csv", "config_path": "docs/prereg/frozen_config_v0.3.2.json",
                     "analysis_script_path": "docs/prereg/analysis.py", "dependency_lock_path": "docs/prereg/requirements.lock",
                     "frozen_files": frozen_files, "seal_path": "results_prereg/evaluation_seal.json"}
+        if self.deviations is not None:
+            manifest["deviations"] = self.deviations
         write_json(self.prereg / "freeze_manifest.json", manifest)
         self.manifest = self.prereg / "freeze_manifest.json"
         self.reseal()
@@ -134,7 +155,7 @@ class Study:
             if k not in files:
                 files[k] = old.get(k, "0" * 64)  # a deleted / deliberately stale file keeps its sealed hash
         write_json(seal_path, {"schema_version": "prereg-seal-1", "synthetic": not self.formal, "freeze_manifest_sha256": sha(self.manifest), "all_training_complete": True,
-                               "all_checkpoint_checks_passed": True, "runs": [r["run_name"] for r in self.rows], "files": files, "attempts": []})
+                               "all_checkpoint_checks_passed": True, "runs": [r["run_name"] for r in self.rows], "files": files, "attempts": self.attempts})
 
     # --- helpers for the tests
     def path(self, run, rel):

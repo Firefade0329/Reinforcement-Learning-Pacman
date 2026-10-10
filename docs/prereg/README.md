@@ -97,6 +97,15 @@ synthetic studies only (`python/tests/test_prereg_analysis.py`, fixtures F1-F8 a
 section 8, with hand-derived expected values); no real or old result is ever read. The human sign-off fields (reviewer, date, what was
 checked, freeze approval) are intentionally not filled in by the code or its author.
 
+What the outputs contain beyond the statistics (ANALYSIS_SPEC section 7): for every endpoint the per-seed integer counts and sources
+(run, file, SHA-256, 300 test seeds, integer sum) of the death / win / truncation rates and mean steps; model, rate and effect tables for
+`best_standard` and, when enabled, `last_hard`; per run the optional resource fields of `summary.json` (minutes, memory peaks) with their
+source field, or `null` with a reason; per run the archived failed attempts of the evaluation seal; and `deviations`, which lists only what a
+record states: entries declared in the freeze manifest (optional `deviations` array of `{id, description, source}`, written with
+`freeze-manifest --deviations-file`) and every archived failed attempt. The script never infers a deviation from the data. The report's
+claim about number sources is limited to what the JSON actually keeps (statistic objects: metric/formula/parents/integer numerators;
+resource numbers: the summary field; constants: `parameters`).
+
 ## Freeze identity: code commit C and freeze commit F
 
 The frozen configuration records `code_commit` in a tracked file, so it cannot name the commit that contains it. The study therefore
