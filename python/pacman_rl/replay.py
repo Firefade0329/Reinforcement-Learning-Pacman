@@ -27,6 +27,7 @@ class NStepReplay:
         self.pos = 0
         self.size = 0
         self.pending = [deque() for _ in range(n_envs)]  # (obs, action, reward)
+        self.on_emit = None  # optional read-only observer(env_i, h, action, ret, disc), called after each stored window (window diagnostics)
 
     def _enc(self, obs):
         return obs if self.scale is None else np.rint(obs * self.scale).astype(np.uint8)
@@ -50,10 +51,14 @@ class NStepReplay:
                     ret += (self.gamma ** j) * items[start + j][2]
                 disc = 0.0 if terminated else self.gamma ** k  # truncation still bootstraps
                 self._emit(items[start][0], items[start][1], ret, next_obs, disc)
+                if self.on_emit is not None:
+                    self.on_emit(env_i, k, items[start][1], ret, disc)
             q.clear()
         elif len(q) == self.n:
             ret = sum((self.gamma ** j) * q[j][2] for j in range(self.n))
             self._emit(q[0][0], q[0][1], ret, next_obs, self.gamma ** self.n)
+            if self.on_emit is not None:
+                self.on_emit(env_i, self.n, q[0][1], ret, self.gamma ** self.n)
             q.popleft()
 
     def sample(self, batch: int, rng: np.random.Generator):
