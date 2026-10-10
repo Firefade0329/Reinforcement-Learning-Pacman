@@ -178,3 +178,90 @@ def test_manifest_refuses_changed_code_or_a_missing_code_commit(repo):
     repo.write_cfg()
     with pytest.raises(seal.ManifestError, match="40-hex"):
         build(repo)
+
+
+def test_manifest_always_freezes_the_two_texts_even_if_the_caller_forgets_them(repo):
+    repo.freeze()
+    obj = seal.build_freeze_manifest(repo.root, "docs/prereg/matrix.csv", CFG_REL, "python/pacman_rl/m.py", "python/pacman_rl/m.py")  # no extras
+    assert {"docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md", "docs/prereg/ANALYSIS_SPEC_v0.3.2.md"} <= set(obj["frozen_files"])
+
+
+@pytest.mark.parametrize("missing", ["PREREG_ARCH_NSTEP_v0.3.2.md", "ANALYSIS_SPEC_v0.3.2.md"])
+def test_manifest_refuses_when_a_mandatory_text_is_absent(repo, missing):
+    repo.freeze()
+    (repo.root / "docs/prereg" / missing).unlink()
+    with pytest.raises(seal.ManifestError, match="mandatory"):
+        seal.build_freeze_manifest(repo.root, "docs/prereg/matrix.csv", CFG_REL, "python/pacman_rl/m.py", "python/pacman_rl/m.py")
+
+
+# ------------------------------------------------------------------ the final evaluation repeats the training gate
+ROWS = PR.load_matrix()[:3]
+
+
+def write_runs(repo, freeze_commit):
+    results = repo.root / "results_prereg"
+    for r in ROWS:
+        d = results / "runs" / r["run_name"]
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "run_complete.json").write_text(json.dumps({"freeze_commit": freeze_commit, "code_commit": repo.C}))
+    return results
+
+
+def final_preflight(repo, results):
+    return runner.final_eval_preflight(repo.cfg, results, ROWS, root=repo.root)
+
+
+def test_final_preflight_accepts_head_equal_to_the_freeze_commit_of_all_runs(repo):
+    F = repo.freeze()
+    ev = final_preflight(repo, write_runs(repo, F))
+    assert ev == {"head": F, "code_commit": repo.C, "freeze_commit_of_runs": F}
+
+
+def test_final_preflight_refuses_when_head_moved_after_the_runs(repo):
+    F = repo.freeze()
+    results = write_runs(repo, F)
+    (repo.root / "docs/prereg/CLAUDE_HANDOFF_v0.3.2.md").write_text("later freeze material\n")
+    repo.git("add", "-A")
+    repo.git("commit", "-qm", "later")
+    with pytest.raises(runner.Refused, match="HEAD is not the freeze commit"):
+        final_preflight(repo, results)
+
+
+def test_final_preflight_refuses_runs_from_different_or_missing_freeze_commits(repo):
+    F = repo.freeze()
+    results = write_runs(repo, F)
+    other = results / "runs" / ROWS[1]["run_name"] / "run_complete.json"
+    other.write_text(json.dumps({"freeze_commit": "e" * 40}))
+    with pytest.raises(runner.Refused, match="one freeze commit"):
+        final_preflight(repo, results)
+    other.unlink()
+    with pytest.raises(runner.Refused, match="one freeze commit"):
+        final_preflight(repo, results)
+
+
+def test_final_preflight_refuses_dirty_tree_draft_config_and_environment_overrides(repo, monkeypatch):
+    F = repo.freeze()
+    results = write_runs(repo, F)
+    (repo.root / "python/pacman_rl/m.py").write_text("x = 3\n")
+    with pytest.raises(runner.Refused, match="uncommitted changes"):
+        final_preflight(repo, results)
+    (repo.root / "python/pacman_rl/m.py").write_text("x = 1\n")
+    repo.cfg["status"] = "draft"
+    with pytest.raises(runner.Refused, match="not 'frozen'"):
+        final_preflight(repo, results)
+    repo.cfg["status"] = "frozen"
+    monkeypatch.setenv("PACMAN_DEVICE", "cpu")
+    with pytest.raises(runner.Refused):
+        final_preflight(repo, results)
+
+
+def test_evaluation_machine_evidence_is_saved_separately_and_only_once(repo):
+    F = repo.freeze()
+    results = write_runs(repo, F)
+    ev = final_preflight(repo, results)
+    runner.save_final_eval_environment(results, repo.cfg, ev, root=repo.root)
+    rec = json.loads((results / "final_eval_environment.json").read_text())
+    assert rec["preflight"] == ev and rec["evaluation_device"] == repo.cfg["final_eval_device"]
+    assert "utc" in rec and "code_version" in rec and isinstance(rec["environment"], dict)
+    with pytest.raises(runner.Refused, match="one-shot"):
+        runner.save_final_eval_environment(results, repo.cfg, ev, root=repo.root)

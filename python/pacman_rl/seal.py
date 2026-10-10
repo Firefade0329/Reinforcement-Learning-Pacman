@@ -172,6 +172,7 @@ def verify_manifest(path, results_dir, rows, freeze, analysis_script, *, allow_u
 # ---------------------------------------------------------------------------------- evaluation seal / freeze manifest
 EVAL_SEAL_SCHEMA = "prereg-seal-1"
 FREEZE_SCHEMA = "prereg-freeze-1"
+REQUIRED_FROZEN_DOCS = ("docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md", "docs/prereg/ANALYSIS_SPEC_v0.3.2.md")
 
 
 def required_run_files(hard_enabled: bool) -> list[str]:
@@ -233,10 +234,10 @@ def build_freeze_manifest(root, matrix_path, config_path, analysis_script, depen
     state = freeze_state(root, code_commit, allow_dirty_freeze_files=True)
     if state["problems"]:
         raise ManifestError("not a valid freeze state:\n  - " + "\n  - ".join(state["problems"]))
-    rels = [str(Path(p).as_posix()) for p in (matrix_path, config_path, analysis_script, dependency_lock, *extra_frozen)]
+    rels = list(dict.fromkeys(str(Path(p).as_posix()) for p in (matrix_path, config_path, analysis_script, dependency_lock, *REQUIRED_FROZEN_DOCS, *extra_frozen)))
     missing = [r for r in rels if not (root / r).is_file()]
     if missing:
-        raise ManifestError(f"frozen files missing: {missing}")
+        raise ManifestError(f"frozen files missing (the preregistration and analysis-specification texts are mandatory): {missing}")
     return {"schema_version": FREEZE_SCHEMA, "synthetic": False, "complete": True, "spec_version": spec_version, "code_commit": code_commit,
             "project_root": ".", "matrix_path": str(Path(matrix_path).as_posix()), "config_path": str(Path(config_path).as_posix()),
             "analysis_script_path": str(Path(analysis_script).as_posix()), "dependency_lock_path": str(Path(dependency_lock).as_posix()),

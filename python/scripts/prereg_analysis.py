@@ -47,6 +47,8 @@ FROZEN_REQUIRED = ("eps_start", "eps_end", "eps_frac", "tau", "grad_clip", "val_
                    "eval_episodes", "final_eval_device", "final_eval_threads", "hard_enabled", "code_commit", "machine_id", "train_device",
                    "validation_device", "worker_count", "max_episode_steps", "train_scenario", "hard_chase_p")
 HEX64 = set("0123456789abcdef")
+SCRIPT_PATH = Path(__file__).resolve()  # the bytes of THIS file must equal the hash the freeze manifest locked
+REQUIRED_DOCS = ("docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md", "docs/prereg/ANALYSIS_SPEC_v0.3.2.md")  # must be in frozen_files in formal mode
 
 
 class AnalysisError(Exception):
@@ -160,6 +162,14 @@ def validate_inputs(manifest_path: Path, input_root: Path, project_root: Path | 
     for rel in (manifest["matrix_path"], manifest["config_path"], manifest["analysis_script_path"], manifest["dependency_lock_path"]):
         if rel not in manifest["frozen_files"]:
             raise AnalysisError("E_MANIFEST", f"{rel} is not listed in frozen_files", path=rel)
+    if mode == "formal":
+        for rel in REQUIRED_DOCS:
+            if rel not in manifest["frozen_files"]:
+                raise AnalysisError("E_MANIFEST", f"the preregistration / specification text {rel} is not frozen (missing from frozen_files)", path=rel)
+    running = sha256_file(SCRIPT_PATH)
+    if running != manifest["frozen_files"][manifest["analysis_script_path"]]:
+        raise AnalysisError("E_HASH_MISMATCH", "the analysis script being run is not the frozen one", path=manifest["analysis_script_path"],
+                            expected=manifest["frozen_files"][manifest["analysis_script_path"]], actual=running)
     if sha256_file(matrix_path) != MATRIX_SHA256:
         raise AnalysisError("E_HASH_MISMATCH", "matrix.csv is not the registered file", path=manifest["matrix_path"], expected=MATRIX_SHA256, actual=sha256_file(matrix_path))
     rows = load_matrix(matrix_path)
@@ -183,6 +193,10 @@ def validate_inputs(manifest_path: Path, input_root: Path, project_root: Path | 
             raise AnalysisError("E_CONFIG_MISMATCH", f"frozen config {key} differs from the preregistered value", path=manifest["config_path"], expected=want if key not in ("val_seeds", "test_seeds") else "range", actual=frozen[key] if key not in ("val_seeds", "test_seeds") else "array")
     if frozen["code_commit"] != manifest["code_commit"]:
         raise AnalysisError("E_CONFIG_MISMATCH", "frozen config code_commit differs from the manifest", expected=manifest["code_commit"], actual=frozen["code_commit"])
+    want_status = "frozen" if mode == "formal" else "synthetic"
+    if frozen.get("status") != want_status:
+        raise AnalysisError("E_CONFIG_MISMATCH", f"{mode} mode needs a frozen configuration with status {want_status!r} (a draft is never a formal input)",
+                            path=manifest["config_path"], json_path="$.status", expected=want_status, actual=frozen.get("status"))
     hard = frozen["hard_enabled"]
     frozen_sha = sha256_file(config_path)
     # --- seal
@@ -656,10 +670,10 @@ def analyze(manifest: Path, input_root: Path, output_dir: Path, mode: str, proje
         raise AnalysisError("E_MANIFEST", "output directory already exists; an analysis id is never overwritten", path=output_dir.name)
     ctx = validate_inputs(Path(manifest), Path(input_root), Path(project_root) if project_root else None, mode)
     ep, expl, prim, names, vals, index_sha = analyze_arrays(ctx)
-    script = Path(__file__).resolve()
+    script = SCRIPT_PATH
     analysis = {
         "schema_version": "prereg-analysis-1", "analysis_spec_version": SPEC_VERSION, "mode": mode, "complete": True,
-        "provenance": {"analysis_script_sha256": sha256_file(script), "code_commit": ctx["manifest"]["code_commit"], "freeze_manifest_sha256": ctx["manifest_sha"],
+        "provenance": {"analysis_script_sha256": sha256_file(SCRIPT_PATH), "code_commit": ctx["manifest"]["code_commit"], "freeze_manifest_sha256": ctx["manifest_sha"],
                        "frozen_files": ctx["manifest"]["frozen_files"], "evaluation_seal_sha256": ctx["seal_sha"], "evaluation_device": ctx["frozen"]["final_eval_device"],
                        "numpy_version": np.__version__, "python_version": sys.version.split()[0], "utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")},
         "integrity": {"expected_runs": 30, "actual_runs": 30, "evaluation_files": len(ctx["files"]), "records_per_file": 300, "test_seed_range": [30000, 30299],

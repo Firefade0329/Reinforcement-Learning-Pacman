@@ -312,8 +312,43 @@ def final_eval_run(results: Path, name: str, token, freeze: dict | None = None, 
     return written
 
 
+def final_eval_preflight(freeze: dict, results: Path, rows, *, root: Path | None = None) -> dict:
+    """The same gate as before training, applied again before the sealed seeds are read: no PACMAN_* overrides, a frozen configuration, a
+    legitimate freeze state (C ancestor of HEAD, python/ identical, only freeze material changed, clean tree) and HEAD == the freeze commit F
+    that ALL runs recorded.  Returns the evidence record that is saved next to the results."""
+    reject_env()
+    root = root or ROOT
+    problems = PR.check_matrix_file() + freeze_problems(freeze)
+    state = P.freeze_state(root, freeze.get("code_commit"))
+    problems += state["problems"]
+    fcs = set()
+    for r in rows:
+        f = results / "runs" / r["run_name"] / "run_complete.json"
+        fcs.add(json.loads(f.read_text()).get("freeze_commit") if f.is_file() else None)
+    if len(fcs) != 1 or None in fcs:
+        problems.append("the runs do not all record one freeze commit")
+    elif state["head"] not in fcs:
+        problems.append("HEAD is not the freeze commit F that the runs were made from")
+    if problems:
+        raise Refused("refusing the final evaluation:\n  - " + "\n  - ".join(problems))
+    return {"head": state["head"], "code_commit": state["code_commit"], "freeze_commit_of_runs": sorted(fcs)[0]}
+
+
+def save_final_eval_environment(results: Path, freeze: dict, evidence: dict | None, *, root: Path | None = None):
+    """Machine / environment evidence of the final evaluation, saved separately (the evaluation files' meta is unchanged)."""
+    import torch
+
+    torch.set_num_threads(freeze["final_eval_threads"])
+    rec = {"utc": utc(), "evaluation_device": freeze["final_eval_device"], "environment": P.environment_info(freeze["final_eval_device"]),
+           "code_version": P.code_version(root or ROOT), "preflight": evidence}
+    out = results / "final_eval_environment.json"
+    if out.exists():
+        raise Refused(f"{out.name} already exists; the final evaluation is one-shot")
+    out.write_text(json.dumps(rec, indent=1), encoding="utf-8")
+
+
 def final_eval(manifest: Path, results: Path, analysis_script: Path, *, unseal: bool, rows=None, freeze=None,
-               allow_unfrozen=False, tiny=None) -> dict:
+               allow_unfrozen=False, tiny=None, root: Path | None = None) -> dict:
     """The ONLY code path that reads the sealed test seeds.  Verifies the manifest against the files on disk first."""
     from pacman_rl import seal
 
@@ -321,10 +356,12 @@ def final_eval(manifest: Path, results: Path, analysis_script: Path, *, unseal: 
         raise Refused("the sealed test seeds are only read with an explicit --unseal (and a verified manifest)")
     reject_env()
     rows, freeze = rows or PR.load_matrix(), freeze or PR.load_freeze()
+    evidence = None if allow_unfrozen else final_eval_preflight(freeze, results, rows, root=root)
     try:
         token = seal.verify_manifest(manifest, results, rows, freeze, analysis_script, allow_unfrozen=allow_unfrozen, tiny_overrides=tiny)
     except seal.ManifestError as e:
         raise Refused(str(e))
+    save_final_eval_environment(results, freeze, evidence, root=root)
     with open(results / "unseal_log.jsonl", "a", encoding="utf-8") as f:
         f.write(json.dumps({"utc": utc(), "manifest_sha256": token.manifest_sha256, "runs": len(rows)}) + "\n")
     index = {r["run_name"]: final_eval_run(results, r["run_name"], token, freeze) for r in rows}

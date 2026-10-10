@@ -40,8 +40,10 @@ def typed(row):
 
 
 class Study:
-    def __init__(self, root: Path, d=None, score_fn=None, hard=False, hard_d=None):
-        self.root, self.hard = Path(root), hard
+    def __init__(self, root: Path, d=None, score_fn=None, hard=False, hard_d=None, formal=False):
+        """formal=True builds the same fake study but labelled for formal mode (synthetic=false, status 'frozen', texts frozen) so that the
+        formal-mode gates can be tested; the DATA are still invented."""
+        self.root, self.hard, self.formal = Path(root), hard, formal
         self.d = d or {a: [0] * 5 for a in ARCHS}
         self.score_fn = score_fn
         self.hard_d = hard_d or self.d
@@ -67,11 +69,13 @@ class Study:
         self.prereg.mkdir(parents=True, exist_ok=True)
         shutil.copy(REPO / "docs" / "prereg" / "matrix.csv", self.prereg / "matrix.csv")
         frozen = json.loads((REPO / "docs" / "prereg" / "frozen_config_v0.3.2.json").read_text())
-        frozen.update(status="synthetic", code_commit=COMMIT, machine_id="synthetic", worker_count=2, hard_enabled=self.hard)
+        frozen.update(status="frozen" if self.formal else "synthetic", code_commit=COMMIT, machine_id="synthetic", worker_count=2, hard_enabled=self.hard)
         write_json(self.prereg / "frozen_config_v0.3.2.json", frozen)
         self.frozen = frozen
         (self.prereg / "analysis.py").write_text((REPO / "python" / "scripts" / "prereg_analysis.py").read_text(), encoding="utf-8")
         (self.prereg / "requirements.lock").write_text("numpy==2.5.3\n")
+        (self.prereg / "PREREG_ARCH_NSTEP_v0.3.2.md").write_text("SYNTHETIC FAKE preregistration text (test fixture)\n")
+        (self.prereg / "ANALYSIS_SPEC_v0.3.2.md").write_text("SYNTHETIC FAKE analysis specification text (test fixture)\n")
         self.fsha = sha(self.prereg / "frozen_config_v0.3.2.json")
         for r in self.rows:
             self.write_run(r)
@@ -99,7 +103,7 @@ class Study:
             self.write_eval(d / "last" / "hard.json", r, "last", "hard", self.records(a, n, si, hard=True), w)
 
     def write_eval(self, path, r, label, scenario, records, w, reused=False):
-        meta = {"synthetic": True, "run_name": r["run_name"], "arch": r["arch"], "n_step": r["n_step"], "train_seed": r["seed"], "checkpoint": label,
+        meta = {"synthetic": not self.formal, "run_name": r["run_name"], "arch": r["arch"], "n_step": r["n_step"], "train_seed": r["seed"], "checkpoint": label,
                 "checkpoint_step": 300000 if label == "last" else 20000, "weights_sha256": w, "code_commit": COMMIT, "scenario": scenario,
                 "device": "cpu", "torch_threads": 1}
         if reused:
@@ -111,8 +115,8 @@ class Study:
         return [f"{r['run_name']}/{rel}" for r in self.rows for rel in rels]
 
     def write_manifest_and_seal(self, keep_missing=True):
-        frozen_files = {f"docs/prereg/{n}": sha(self.prereg / n) for n in ("matrix.csv", "frozen_config_v0.3.2.json", "analysis.py", "requirements.lock")}
-        manifest = {"schema_version": "prereg-freeze-1", "synthetic": True, "complete": True, "spec_version": "0.3.2", "code_commit": COMMIT,
+        frozen_files = {f"docs/prereg/{n}": sha(self.prereg / n) for n in ("matrix.csv", "frozen_config_v0.3.2.json", "analysis.py", "requirements.lock", "PREREG_ARCH_NSTEP_v0.3.2.md", "ANALYSIS_SPEC_v0.3.2.md")}
+        manifest = {"schema_version": "prereg-freeze-1", "synthetic": not self.formal, "complete": True, "spec_version": "0.3.2", "code_commit": COMMIT,
                     "project_root": str(self.root), "matrix_path": "docs/prereg/matrix.csv", "config_path": "docs/prereg/frozen_config_v0.3.2.json",
                     "analysis_script_path": "docs/prereg/analysis.py", "dependency_lock_path": "docs/prereg/requirements.lock",
                     "frozen_files": frozen_files, "seal_path": "results_prereg/evaluation_seal.json"}
@@ -129,7 +133,7 @@ class Study:
         for k in self.required():
             if k not in files:
                 files[k] = old.get(k, "0" * 64)  # a deleted / deliberately stale file keeps its sealed hash
-        write_json(seal_path, {"schema_version": "prereg-seal-1", "synthetic": True, "freeze_manifest_sha256": sha(self.manifest), "all_training_complete": True,
+        write_json(seal_path, {"schema_version": "prereg-seal-1", "synthetic": not self.formal, "freeze_manifest_sha256": sha(self.manifest), "all_training_complete": True,
                                "all_checkpoint_checks_passed": True, "runs": [r["run_name"] for r in self.rows], "files": files, "attempts": []})
 
     # --- helpers for the tests

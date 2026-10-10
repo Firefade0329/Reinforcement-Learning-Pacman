@@ -611,3 +611,66 @@ def test_no_single_key_replacement_or_deletion_escapes_as_an_unwrapped_exception
         if study.runs in path.parents:
             study.reseal()
     assert n > 150 and not escaped, escaped[:8]
+
+
+# ------------------------------------------------------------------ formal-mode gates (P2-2); the DATA are invented, only the labels are formal
+def run_formal(tmp_path, st, name="formal_out"):
+    out = tmp_path / name
+    A.analyze(st.manifest, st.runs, out, "formal")
+    return json.loads((out / "analysis.json").read_text()), out
+
+
+def test_a_valid_formal_labelled_study_passes_all_gates(tmp_path):
+    st = Study(tmp_path / "p", d=const_d(10, 20, 30), formal=True)
+    an, out = run_formal(tmp_path, st)
+    assert an["mode"] == "formal" and "FORMAL ANALYSIS" in (out / "REPORT.md").read_text()
+    assert effects(an)["d"]["res4"]["raw_values"] == [20] * 5
+
+
+def test_formal_mode_requires_both_texts_in_the_frozen_hashes(tmp_path):
+    st = Study(tmp_path / "p", d=const_d(10, 20, 30), formal=True)
+    m = json.loads(st.manifest.read_text())
+    del m["frozen_files"]["docs/prereg/ANALYSIS_SPEC_v0.3.2.md"]
+    st.manifest.write_text(json.dumps(m))
+    st.reseal()
+    with pytest.raises(A.AnalysisError) as e:
+        A.analyze(st.manifest, st.runs, tmp_path / "o", "formal")
+    assert e.value.obj["code"] == "E_MANIFEST" and "ANALYSIS_SPEC" in e.value.obj["message"] and not (tmp_path / "o").exists()
+    # the synthetic mode of the same study does not demand them
+    st2 = Study(tmp_path / "q", d=const_d(10, 20, 30))
+    m2 = json.loads(st2.manifest.read_text())
+    del m2["frozen_files"]["docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md"]
+    st2.manifest.write_text(json.dumps(m2))
+    st2.reseal()
+    assert A.analyze(st2.manifest, st2.runs, tmp_path / "o2", "synthetic")["complete"] is True
+
+
+def test_running_a_different_script_than_the_frozen_one_is_rejected(tmp_path, monkeypatch):
+    st = Study(tmp_path / "p", d=const_d(10, 20, 30))
+    other = tmp_path / "other_script.py"
+    other.write_text(Path(A.__file__).read_text() + "\n# a modified copy\n")
+    monkeypatch.setattr(A, "SCRIPT_PATH", other)
+    with pytest.raises(A.AnalysisError) as e:
+        A.analyze(st.manifest, st.runs, tmp_path / "o", "synthetic")
+    assert e.value.obj["code"] == "E_HASH_MISMATCH" and "not the frozen one" in e.value.obj["message"] and not (tmp_path / "o").exists()
+
+
+def test_a_draft_configuration_cannot_pose_as_formal_or_synthetic(tmp_path):
+    st = Study(tmp_path / "p", d=const_d(10, 20, 30), formal=True)
+    cfgp = st.prereg / "frozen_config_v0.3.2.json"
+    cfg = json.loads(cfgp.read_text())
+    cfg["status"] = "draft"
+    cfgp.write_text(json.dumps(cfg))
+    st.write_manifest_and_seal()  # hashes follow the edit: only the status is wrong
+    with pytest.raises(A.AnalysisError) as e:
+        A.analyze(st.manifest, st.runs, tmp_path / "o", "formal")
+    assert e.value.obj["code"] == "E_CONFIG_MISMATCH" and e.value.obj["json_path"] == "$.status" and e.value.obj["actual"] == "draft"
+    st2 = Study(tmp_path / "q", d=const_d(10, 20, 30))
+    c2 = st2.prereg / "frozen_config_v0.3.2.json"
+    d2 = json.loads(c2.read_text())
+    d2["status"] = "frozen"  # a "frozen" configuration is not a synthetic one either
+    c2.write_text(json.dumps(d2))
+    st2.write_manifest_and_seal()
+    with pytest.raises(A.AnalysisError) as e2:
+        A.analyze(st2.manifest, st2.runs, tmp_path / "o2", "synthetic")
+    assert e2.value.obj["code"] == "E_CONFIG_MISMATCH"

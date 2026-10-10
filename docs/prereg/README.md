@@ -107,3 +107,15 @@ hand-over texts and the checklist). Procedure: commit the code (C); put C into `
 and HEAD, `matrix.csv` is unchanged, every file that differs between C and HEAD is freeze material, and the tracked working tree is clean.
 Runs store C (`config.json`, evaluation `meta.code_commit`, `run_complete.json`) and F (`run_complete.json` `freeze_commit`, `code_version.json`
 `git_sha`); the external freeze record keeps F. No field was added to the frozen configuration.
+
+## Freeze material is enforced, not just listed
+
+* `freeze-manifest` always puts the preregistration text and the analysis specification (`PREREG_ARCH_NSTEP_v0.3.2.md`,
+  `ANALYSIS_SPEC_v0.3.2.md`) into `frozen_files`, whatever `--extra-frozen` says, and refuses to write a manifest if either is missing.
+* In `--mode formal` the analysis script requires both texts in the manifest, requires the frozen configuration to carry `status: "frozen"`
+  (`"synthetic"` for synthetic mode; a draft cannot pass as either), and compares the bytes of the script that is actually running with the hash
+  the manifest locked for `analysis_script_path`.
+* `final-eval` repeats the training gate before it reads the sealed seeds: no `PACMAN_*` overrides, a frozen configuration, a legitimate
+  freeze state (see above), a clean tracked tree, and `HEAD` equal to the freeze commit F that every run recorded. It then saves the machine
+  and environment of the evaluation (device, software versions, thread count, code version, the gate's result) in
+  `results_prereg/final_eval_environment.json`, once, as a separate file; the evaluation files' `meta` contract is unchanged.

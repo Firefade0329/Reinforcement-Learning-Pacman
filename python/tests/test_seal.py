@@ -229,6 +229,31 @@ def test_final_eval_is_one_shot_writes_the_contract_layout_and_format(fresh):
     assert (results / "runs" / ROWS[0]["run_name"] / "last" / "standard.json").read_bytes() == snap
 
 
+def test_formal_final_eval_runs_the_training_gate_before_anything_is_read(fresh, monkeypatch):
+    results, script = fresh
+    m = results / "m.json"
+    seal.write_manifest(m, build(results, script))
+    calls = []
+
+    def refuse(freeze, res, rows, *, root=None):
+        calls.append(1)
+        raise runner.Refused("refusing the final evaluation: gate")
+
+    monkeypatch.setattr(runner, "final_eval_preflight", refuse)
+    with pytest.raises(runner.Refused, match="gate"):  # allow_unfrozen=False: the same preflight as before training
+        runner.final_eval(m, results, script, rows=ROWS, freeze=FREEZE, allow_unfrozen=False, tiny=TINY, unseal=True)
+    assert calls == [1] and not (results / "unseal_log.jsonl").exists() and not (results / "final_eval_environment.json").exists()
+
+
+def test_final_eval_saves_the_evaluation_environment_before_the_seeds_are_read(fresh):
+    results, script = fresh
+    final(results, script, unseal=True)
+    env = json.loads((results / "final_eval_environment.json").read_text())
+    assert env["evaluation_device"] == FREEZE["final_eval_device"] and env["environment"]["torch"]
+    assert env["utc"] <= json.loads((results / "unseal_log.jsonl").read_text().splitlines()[0])["utc"]
+    assert (results / "final_eval_environment.json").stat().st_mtime_ns <= (results / "unseal_log.jsonl").stat().st_mtime_ns
+
+
 def test_identical_best_and_last_are_evaluated_once_and_say_so(fresh):
     results, script = fresh
     name = ROWS[0]["run_name"]
