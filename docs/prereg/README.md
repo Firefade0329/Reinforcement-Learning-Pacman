@@ -59,7 +59,7 @@ profiles shared run names, so `load` after `quick` skipped its runs and overwrot
    commit `results_prereg_smoke/` (it is git-ignored) and do not use smoke scores for any decision.
 
 **Reading the memory numbers.** Every run is its own subprocess and the reported peaks are per process, not summed. On the
-RTX A1000 laptop (Windows, torch 2.14 CUDA build) a `quick` run peaks at about 1540 MB working set: that is the PyTorch + CUDA
+RTX A1000 laptop (Windows) a `quick` run peaks at about 1540 MB working set: that is the PyTorch + CUDA
 process baseline (its 4000-sample buffer is only about 41 MB). The `load` runs peak at about 2.5 GB working set and 3.3 GB
 commit, which is the same baseline plus the roughly 1.0 GB a 100000-sample uint8 replay buffer needs, so the two profiles agree.
 Do not read the `quick` numbers as the memory need of a formal run.
