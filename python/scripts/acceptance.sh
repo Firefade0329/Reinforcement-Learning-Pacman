@@ -5,7 +5,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."            # python/
 export PYTHONPATH="$PWD"
-PY=${PYTHON:-python3}
+# Interpreter: $PYTHON if set, else the first of python3 / python that can run `--version` (on Windows `python3` may be the Microsoft Store
+# alias, which exists but fails).
+if [[ -n "${PYTHON:-}" ]]; then
+  PY=$PYTHON
+else
+  PY=""
+  for cand in python3 python; do
+    if "$cand" --version >/dev/null 2>&1; then PY=$cand; break; fi
+  done
+  [[ -n "$PY" ]] || { echo "no working Python found (tried python3, python); set PYTHON=/path/to/python" >&2; exit 1; }
+fi
 
 if [[ "${1:-}" == "--quick" ]]; then
   TMP=$(mktemp -d); export PACMAN_RESULTS_DIR="$TMP"
