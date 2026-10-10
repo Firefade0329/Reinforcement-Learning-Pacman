@@ -50,9 +50,9 @@ HEX64 = set("0123456789abcdef")
 
 
 class AnalysisError(Exception):
-    def __init__(self, code, message, path=None, run_name=None, record_index=None, seed=None, expected=None, actual=None):
+    def __init__(self, code, message, path=None, run_name=None, record_index=None, seed=None, expected=None, actual=None, json_path=None):
         super().__init__(message)
-        self.obj = {"code": code, "path": path, "run_name": run_name, "record_index": record_index, "seed": seed,
+        self.obj = {"code": code, "path": path, "json_path": json_path, "run_name": run_name, "record_index": record_index, "seed": seed,
                     "expected": expected, "actual": actual, "message": message}
 
 
@@ -129,7 +129,7 @@ def validate_inputs(manifest_path: Path, input_root: Path, project_root: Path | 
     """Steps 1-7 of ANALYSIS_SPEC 2.3.  Returns a context dict; raises AnalysisError."""
     if not manifest_path.is_file():
         raise AnalysisError("E_MISSING_FILE", "freeze manifest not found", path=manifest_path.name)
-    manifest = read_json(manifest_path, manifest_path.name)
+    manifest = _obj(read_json(manifest_path, manifest_path.name), manifest_path.name, None, "$")
     need = ("schema_version", "synthetic", "complete", "spec_version", "code_commit", "project_root", "matrix_path", "config_path",
             "analysis_script_path", "dependency_lock_path", "frozen_files", "seal_path")
     for k in need:
@@ -141,6 +141,9 @@ def validate_inputs(manifest_path: Path, input_root: Path, project_root: Path | 
         raise AnalysisError("E_MANIFEST", f"mode {mode!r} needs synthetic={mode == 'synthetic'} and complete=true", actual=[manifest["synthetic"], manifest["complete"]])
     if not (isinstance(manifest["code_commit"], str) and len(manifest["code_commit"]) == 40 and set(manifest["code_commit"]) <= HEX64):
         raise AnalysisError("E_MANIFEST", "code_commit must be a full 40-hex commit", actual=manifest["code_commit"])
+    for k in ("project_root", "matrix_path", "config_path", "analysis_script_path", "dependency_lock_path", "seal_path"):
+        _str(manifest[k], manifest_path.name, None, f"$.{k}")
+    _obj(manifest["frozen_files"], manifest_path.name, None, "$.frozen_files")
     root = Path(manifest["project_root"])
     if not root.is_absolute():
         if project_root is None:
@@ -151,7 +154,7 @@ def validate_inputs(manifest_path: Path, input_root: Path, project_root: Path | 
         f = root / rel
         if not f.is_file():
             raise AnalysisError("E_MISSING_FILE", f"frozen file {rel} not found", path=rel)
-        if not is_hex64(want) or sha256_file(f) != want:
+        if not f.is_file() or not is_hex64(want) or sha256_file(f) != want:
             raise AnalysisError("E_HASH_MISMATCH", f"frozen file {rel} differs from its frozen hash", path=rel, expected=want, actual=sha256_file(f))
     matrix_path, config_path = root / manifest["matrix_path"], root / manifest["config_path"]
     for rel in (manifest["matrix_path"], manifest["config_path"], manifest["analysis_script_path"], manifest["dependency_lock_path"]):
@@ -168,10 +171,9 @@ def validate_inputs(manifest_path: Path, input_root: Path, project_root: Path | 
         block = rows[6 * b: 6 * b + 6]
         if {r["seed"] for r in block} != {SEEDS[b]} or len({(r["arch"], r["n_step"]) for r in block}) != 6:
             raise AnalysisError("E_RUN_SET", f"matrix rows {6 * b + 1}-{6 * b + 6} are not the six distinct configurations of one training seed")
-    frozen = read_json(config_path, manifest["config_path"])
+    frozen = _obj(read_json(config_path, manifest["config_path"]), manifest["config_path"], None, "$")
     for k in FROZEN_REQUIRED:
-        if k not in frozen:
-            raise AnalysisError("E_REQUIRED_FIELD", f"frozen config lacks {k!r}", path=manifest["config_path"], expected=k)
+        _req(frozen, k, manifest["config_path"], None)
     if not isinstance(frozen["hard_enabled"], bool):
         raise AnalysisError("E_CONFIG_MISMATCH", "hard_enabled must be declared true/false in the frozen configuration", path=manifest["config_path"], actual=frozen["hard_enabled"])
     for key, want in (("val_seeds", list(VAL_SEEDS)), ("test_seeds", list(TEST_SEEDS)), ("eval_episodes", 50), ("final_eval_device", "cpu"),
@@ -187,7 +189,7 @@ def validate_inputs(manifest_path: Path, input_root: Path, project_root: Path | 
     seal_path = root / manifest["seal_path"]
     if not seal_path.is_file():
         raise AnalysisError("E_MISSING_FILE", "evaluation seal not found", path=manifest["seal_path"])
-    seal = read_json(seal_path, manifest["seal_path"])
+    seal = _obj(read_json(seal_path, manifest["seal_path"]), manifest["seal_path"], None, "$")
     if (seal.get("schema_version") != "prereg-seal-1" or seal.get("synthetic") is not (mode == "synthetic")
             or seal.get("freeze_manifest_sha256") != sha256_file(manifest_path) or seal.get("all_training_complete") is not True
             or seal.get("all_checkpoint_checks_passed") is not True or seal.get("runs") != names or not isinstance(seal.get("attempts"), list)
@@ -230,10 +232,32 @@ def validate_inputs(manifest_path: Path, input_root: Path, project_root: Path | 
     return ctx
 
 
-def _req(d, k, rel, name, typ=None):
-    if not isinstance(d, dict) or k not in d:
-        raise AnalysisError("E_REQUIRED_FIELD", f"{rel} lacks field {k!r}", path=rel, run_name=name, expected=k)
+def _req(d, k, rel, name, where="$"):
+    """d[k] for a required field; a non-object container is a schema error (with the JSON path), a missing key a required-field error."""
+    if not isinstance(d, dict):
+        raise AnalysisError("E_SCHEMA", f"{rel}: expected a JSON object at {where}", path=rel, run_name=name, json_path=where, expected="object", actual=type(d).__name__)
+    if k not in d:
+        raise AnalysisError("E_REQUIRED_FIELD", f"{rel} lacks field {k!r} at {where}", path=rel, run_name=name, json_path=f"{where}.{k}", expected=k)
     return d[k]
+
+
+def _int(v, rel, name, jp):
+    """Integer-valued identity / count fields must be JSON integers: no floats (20000.0), no booleans, no strings."""
+    if not is_int(v):
+        raise AnalysisError("E_FIELD_TYPE", f"{rel}: {jp} must be a JSON integer", path=rel, run_name=name, json_path=jp, expected="integer", actual=v)
+    return v
+
+
+def _str(v, rel, name, jp):
+    if not isinstance(v, str):
+        raise AnalysisError("E_FIELD_TYPE", f"{rel}: {jp} must be a string", path=rel, run_name=name, json_path=jp, expected="string", actual=v)
+    return v
+
+
+def _obj(v, rel, name, jp):
+    if not isinstance(v, dict):
+        raise AnalysisError("E_SCHEMA", f"{rel}: {jp} must be a JSON object", path=rel, run_name=name, json_path=jp, expected="object", actual=type(v).__name__)
+    return v
 
 
 def check_run_documents(ctx):
@@ -245,8 +269,8 @@ def check_run_documents(ctx):
         crel, srel = f"{n}/config.json", f"{n}/summary.json"
         for col in CSV_COLUMNS:
             v = _req(cfg, col, crel, n)
-            if isinstance(r[col], bool) != isinstance(v, bool) or (not isinstance(r[col], bool) and type(v) is bool):
-                raise AnalysisError("E_FIELD_TYPE", f"config {col} has the wrong type", path=crel, run_name=n, expected=r[col], actual=v)
+            if type(v) is not type(r[col]):  # strict: seed 100.0 is not the integer 100, "true" is not true
+                raise AnalysisError("E_FIELD_TYPE", f"config {col} has the wrong type", path=crel, run_name=n, json_path=f"$.{col}", expected=r[col], actual=v)
             if v != r[col]:
                 raise AnalysisError("E_CONFIG_MISMATCH", f"config {col} differs from matrix.csv", path=crel, run_name=n, expected=r[col], actual=v)
         for k in FROZEN_REQUIRED:
@@ -270,22 +294,27 @@ def check_run_documents(ctx):
         if tot != 300000:
             raise AnalysisError("E_TRAIN_BUDGET", "total_env_steps != 300000", path=srel, run_name=n, expected=300000, actual=tot)
         rep = _req(summ, "replay", srel, n)
-        size = _req(rep, "size", srel, n)
+        size = _req(rep, "size", srel, n, "$.replay")
         if not is_int(size) or not 0 <= size <= 100000:
             raise AnalysisError("E_FIELD_TYPE", "replay.size must be an integer in [0, 100000]", path=srel, run_name=n, actual=size)
         upd = _req(summ, "actual_updates", srel, n)
         if not is_int(upd) or upd < 0:
             raise AnalysisError("E_FIELD_TYPE", "actual_updates must be a non-negative integer", path=srel, run_name=n, actual=upd)
         vs, ve = _req(summ, "validation_steps", srel, n), _req(summ, "validation_episodes_each", srel, n)
-        if vs != VALIDATION_STEPS or ve != 50 or not is_int(ve):
+        if not isinstance(vs, list):
+            raise AnalysisError("E_FIELD_TYPE", "validation_steps must be an array", path=srel, run_name=n, json_path="$.validation_steps", actual=type(vs).__name__)
+        for i, x in enumerate(vs):
+            _int(x, srel, n, f"$.validation_steps[{i}]")
+        _int(ve, srel, n, "$.validation_episodes_each")
+        if vs != VALIDATION_STEPS or ve != 50:
             raise AnalysisError("E_VALIDATION_SCHEDULE", "validation must be exactly the 15 steps 20000..300000, 50 episodes each", path=srel, run_name=n, expected=VALIDATION_STEPS, actual=[vs, ve] if vs == VALIDATION_STEPS else vs)
         init = _req(summ, "initial_state_dict_sha256", srel, n)
         if not is_hex64(init):
             raise AnalysisError("E_FIELD_TYPE", "initial_state_dict_sha256 must be 64 lower-case hex characters", path=srel, run_name=n, actual=init)
         cks = _req(summ, "checkpoints", srel, n)
         for label in ("last", "best"):
-            c = _req(cks, label, srel, n)
-            st, w = _req(c, "step", srel, n), _req(c, "weights_sha256", srel, n)
+            c = _req(cks, label, srel, n, "$.checkpoints")
+            st, w = _req(c, "step", srel, n, f"$.checkpoints.{label}"), _req(c, "weights_sha256", srel, n, f"$.checkpoints.{label}")
             if not is_int(st) or not is_hex64(w):
                 raise AnalysisError("E_FIELD_TYPE", f"checkpoints.{label} needs an integer step and a 64-hex weights hash", path=srel, run_name=n, actual=[st, w])
         if cks["last"]["step"] != 300000:
@@ -299,14 +328,14 @@ def check_run_documents(ctx):
             erel = f"{n}/{rel}"
             if not isinstance(doc, dict) or _req(doc, "schema_version", erel, n) != "prereg-eval-1":
                 raise AnalysisError("E_SCHEMA", "evaluation file must be a prereg-eval-1 wrapper object", path=erel, run_name=n)
-            meta = _req(doc, "meta", erel, n)
+            meta = _obj(_req(doc, "meta", erel, n), erel, n, "$.meta")
             label, scen = rel.split("/")[0], rel.split("/")[1].removesuffix(".json")
             want = {"synthetic": ctx["mode"] == "synthetic", "run_name": n, "arch": r["arch"], "n_step": r["n_step"], "train_seed": r["seed"],
                     "checkpoint": label, "checkpoint_step": cks[label]["step"], "weights_sha256": cks[label]["weights_sha256"],
                     "code_commit": ctx["manifest"]["code_commit"], "scenario": scen, "device": frozen["final_eval_device"],
                     "torch_threads": frozen["final_eval_threads"]}
             for k, v in want.items():
-                got = _req(meta, k, erel, n)
+                got = _req(meta, k, erel, n, "$.meta")
                 if got != v or type(got) is not type(v):
                     raise AnalysisError("E_METADATA_MISMATCH", f"meta.{k} differs from what the run / path / freeze requires", path=erel, run_name=n, expected=v, actual=got)
             if "reused_from" in meta and (meta["reused_from"] != "last" or label != "best" or cks["best"]["weights_sha256"] != cks["last"]["weights_sha256"]):
@@ -327,9 +356,9 @@ def check_records(ctx):
         for r in rows:
             n = r["run_name"]
             erel = f"{n}/{rel}"
-            recs = docs[erel]["records"] if isinstance(docs[erel], dict) else None
+            recs = _req(docs[erel], "records", erel, n)
             if not isinstance(recs, list):
-                raise AnalysisError("E_SCHEMA", "records must be an array", path=erel, run_name=n)
+                raise AnalysisError("E_SCHEMA", "records must be an array", path=erel, run_name=n, json_path="$.records", actual=type(recs).__name__)
             if len(recs) != 300:
                 raise AnalysisError("E_EPISODE_COUNT", "each evaluation file needs exactly 300 records", path=erel, run_name=n, expected=300, actual=len(recs))
             for i, rec in enumerate(recs):
@@ -342,8 +371,10 @@ def check_records(ctx):
                 seed, score, steps = rec["seed"], rec["score"], rec["steps"]
                 if not is_int(seed) or not is_int(steps):
                     raise AnalysisError("E_FIELD_TYPE", "seed and steps must be JSON integers", seed=seed if is_int(seed) else None, actual=[seed, steps], **ctxd)
-                if isinstance(score, bool) or not isinstance(score, (int, float)) or (isinstance(score, float) and score != int(score)):
-                    raise AnalysisError("E_FIELD_TYPE", "score must be an integer-valued number", seed=seed, actual=score, **ctxd)
+                if isinstance(score, bool) or not isinstance(score, (int, float)):
+                    raise AnalysisError("E_FIELD_TYPE", "score must be a number", seed=seed, actual=score, **ctxd)
+                if isinstance(score, float) and score != int(score):  # finite but not a whole number of pellets: outside the legal score set
+                    raise AnalysisError("E_SCORE_RANGE", "score must be a whole number of pellets in [0, 377]", seed=seed, expected="integer 0..377", actual=score, **ctxd)
                 for k in ("died", "won", "truncated"):
                     if not isinstance(rec[k], bool):
                         raise AnalysisError("E_FIELD_TYPE", f"{k} must be a JSON boolean", seed=seed, actual=rec[k], **ctxd)

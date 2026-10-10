@@ -449,7 +449,6 @@ def test_duplicate_json_key(study, tmp_path):
 
 @pytest.mark.parametrize("fn,code", [
     (lambda d: d["records"][0].update(score="100"), "E_FIELD_TYPE"),
-    (lambda d: d["records"][0].update(score=100.5), "E_FIELD_TYPE"),
     (lambda d: d["records"][0].update(seed=30000.0), "E_FIELD_TYPE"),
     (lambda d: d["records"][0].update(died="true"), "E_FIELD_TYPE"),
     (lambda d: d["records"][0].update(died=False, truncated=True, steps=999), "E_END_FLAGS"),
@@ -503,3 +502,112 @@ def test_the_script_never_reads_old_result_directories_or_checkpoints():
         assert not [c for c in consts if forbidden in c], forbidden
     imports = {a.name.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names} | {n.module.split(".")[0] for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
     assert "torch" not in imports and "pacman_rl" not in imports  # numpy + stdlib only
+
+
+def test_E9b_finite_non_integer_score_is_a_score_range_error(study, tmp_path):
+    """The specification files a finite non-integer score (100.5) under E_SCORE_RANGE; strings and booleans stay E_FIELD_TYPE."""
+    study.edit_json(R0, "last/standard.json", lambda d: d["records"][0].update(score=100.5))
+    fail(tmp_path, study, "E_SCORE_RANGE", record_index=0)
+
+
+# ------------------------------------------------------------------ error contract: containers, missing keys, float identities (P2-1)
+def cli(study, tmp_path):
+    r = subprocess.run([sys.executable, str(Path(A.__file__)), "analyze", "--mode", "synthetic", "--manifest", str(study.manifest), "--input-root", str(study.runs),
+                        "--output-dir", str(tmp_path / "cli_out")], capture_output=True, text=True)
+    assert not (tmp_path / "cli_out").exists() and "Traceback" not in r.stderr, r.stderr[-400:]
+    return r.returncode, json.loads(r.stderr, parse_constant=lambda c: (_ for _ in ()).throw(ValueError(c)))
+
+
+def test_cli_missing_records_key(study, tmp_path):
+    study.edit_json(R0, "last/standard.json", lambda d: d.pop("records"))
+    rc, obj = cli(study, tmp_path)
+    assert rc == 2 and obj["code"] == "E_REQUIRED_FIELD" and obj["json_path"] == "$.records" and obj["run_name"] == R0
+
+
+@pytest.mark.parametrize("fn,code,jp", [
+    (lambda d: d.update(records={"a": 1}), "E_SCHEMA", "$.records"),
+    (lambda d: d.update(meta=[1]), "E_SCHEMA", "$.meta"),
+])
+def test_cli_wrong_container_types_in_an_evaluation_file(study, tmp_path, fn, code, jp):
+    study.edit_json(R0, "last/standard.json", fn)
+    rc, obj = cli(study, tmp_path)
+    assert rc == 2 and obj["code"] == code and obj["json_path"] == jp
+
+
+def test_cli_frozen_files_must_be_an_object_and_path_fields_strings(study, tmp_path):
+    m = json.loads(study.manifest.read_text())
+    m["frozen_files"] = ["docs/prereg/matrix.csv"]
+    study.manifest.write_text(json.dumps(m))
+    rc, obj = cli(study, tmp_path)
+    assert rc == 2 and obj["code"] == "E_SCHEMA" and obj["json_path"] == "$.frozen_files"
+    m["frozen_files"] = {}
+    m["config_path"] = 5
+    study.manifest.write_text(json.dumps(m))
+    rc, obj = cli(study, tmp_path)
+    assert rc == 2 and obj["code"] == "E_FIELD_TYPE" and obj["json_path"] == "$.config_path"
+
+
+def test_cli_float_identities_are_rejected(study, tmp_path):
+    study.edit_json(R0, "config.json", lambda d: d.update(seed=100.0))
+    rc, obj = cli(study, tmp_path)
+    assert rc == 2 and obj["code"] == "E_FIELD_TYPE" and obj["json_path"] == "$.seed" and obj["run_name"] == R0
+
+
+def test_cli_float_validation_step_is_rejected(study, tmp_path):
+    study.edit_json(R0, "summary.json", lambda d: d["validation_steps"].__setitem__(0, 20000.0))
+    rc, obj = cli(study, tmp_path)
+    assert rc == 2 and obj["code"] == "E_FIELD_TYPE" and obj["json_path"] == "$.validation_steps[0]"
+
+
+def test_cli_float_in_other_integer_fields(study, tmp_path):
+    study.edit_json(R0, "last/standard.json", lambda d: d["meta"].update(train_seed=100.0))
+    rc, obj = cli(study, tmp_path)
+    assert rc == 2 and obj["code"] == "E_METADATA_MISMATCH"
+    study.edit_json(R0, "last/standard.json", lambda d: d["meta"].update(train_seed=100))
+    study.edit_json(R0, "summary.json", lambda d: d["replay"].update(size=100000.0))
+    rc, obj = cli(study, tmp_path)
+    assert rc == 2 and obj["code"] == "E_FIELD_TYPE"
+
+
+def test_no_single_key_replacement_or_deletion_escapes_as_an_unwrapped_exception(study, tmp_path):
+    """Property check: replace or delete every top-level key (and the nested meta / replay / checkpoints keys) of the manifest, the
+    seal and the files of one run with values of the wrong type -- the analyzer must answer with an AnalysisError, never with a
+    KeyError / TypeError / AttributeError (we do not catch generic exceptions to hide such defects)."""
+    vals = [[], "x", 5, None, {}, 1.5]
+    targets = [(study.manifest, []), (study.root / "results_prereg/evaluation_seal.json", [])]
+    for rel in ("config.json", "summary.json", "last/standard.json", "best/standard.json"):
+        targets.append((study.path(R0, rel), []))
+    targets += [(study.path(R0, "last/standard.json"), ["meta"]), (study.path(R0, "summary.json"), ["replay"]), (study.path(R0, "summary.json"), ["checkpoints"])]
+    escaped, n = [], 0
+    for path, prefix in targets:
+        original = path.read_text()
+        d = json.loads(original)
+        t = d
+        for k in prefix:
+            t = t[k]
+        for i, key in enumerate(list(t)):
+            for action in (vals[i % len(vals)], "__delete__"):
+                dd = json.loads(original)
+                tt = dd
+                for k in prefix:
+                    tt = tt[k]
+                if action == "__delete__":
+                    del tt[key]
+                else:
+                    tt[key] = action
+                path.write_text(json.dumps(dd))
+                if study.runs in path.parents:
+                    study.reseal()  # run files: keep the seal consistent so the fault is reached; manifest / seal faults are tested as they are
+                n += 1
+                try:
+                    A.analyze(study.manifest, study.runs, tmp_path / f"fz{n}", "synthetic")
+                except A.AnalysisError:
+                    pass
+                except Exception as e:  # noqa: BLE001 - this IS the defect the test looks for
+                    escaped.append(f"{path.name}{prefix}.{key} <- {action!r}: {type(e).__name__}")
+                finally:
+                    shutil.rmtree(tmp_path / f"fz{n}", ignore_errors=True)
+        path.write_text(original)
+        if study.runs in path.parents:
+            study.reseal()
+    assert n > 150 and not escaped, escaped[:8]
