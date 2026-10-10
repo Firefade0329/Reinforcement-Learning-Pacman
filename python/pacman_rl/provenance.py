@@ -88,7 +88,7 @@ FREEZE_MATERIALS = ("docs/prereg/frozen_config_v0.3.2.json", "docs/prereg/freeze
                     "docs/prereg/ANALYSIS_SPEC_v0.3.2.md", "docs/prereg/CLAUDE_HANDOFF_v0.3.2.md", "docs/prereg/FREEZE_CHECKLIST.md")
 
 
-def freeze_state(root: Path | None, code_commit: str | None, *, allow_dirty_freeze_files: bool = False) -> dict:
+def freeze_state(root: Path | None, code_commit: str | None, *, allow_dirty_freeze_files: bool = False, must_exist_in_c: tuple = ()) -> dict:
     """Is this working copy a legitimate FREEZE commit F of the code commit C = ``code_commit``?
 
     The frozen configuration records C in a tracked file, so it cannot name the commit that contains it.  Hence two commits: C is
@@ -96,7 +96,8 @@ def freeze_state(root: Path | None, code_commit: str | None, *, allow_dirty_free
     (or equal to) HEAD; the ``python/`` tree object is byte-identical at C and HEAD; ``docs/prereg/matrix.csv`` is unchanged; every file
     that differs between C and HEAD is in FREEZE_MATERIALS; no tracked file is modified in the working tree (while the freeze files
     are being prepared, ``allow_dirty_freeze_files`` accepts modifications to FREEZE_MATERIALS only).  Returns
-    {"problems": [...], "head": sha-or-None, "code_commit": C}."""
+    {"problems": [...], "head": sha-or-None, "code_commit": C}.  ``must_exist_in_c``: paths that must already be in C's tree (files that
+    may not first appear in F, e.g. the dependency snapshot)."""
     root = Path(root or ROOT)
     problems: list[str] = []
     head = _git(root, "rev-parse", "HEAD")
@@ -116,6 +117,9 @@ def freeze_state(root: Path | None, code_commit: str | None, *, allow_dirty_free
         return out
     if _git(root, "rev-parse", f"{code_commit}:python") != _git(root, "rev-parse", "HEAD:python"):
         problems.append("the python/ tree at HEAD differs from the one at code_commit")
+    for rel in must_exist_in_c:
+        if subprocess.run(["git", "cat-file", "-e", f"{code_commit}:{rel}"], cwd=root, capture_output=True).returncode != 0:
+            problems.append(f"{rel} does not exist in the code commit C (it may not first appear in the freeze commit F)")
     changed = (_git(root, "diff", "--name-only", code_commit, "HEAD") or "").splitlines()
     bad = sorted(f for f in changed if f not in FREEZE_MATERIALS)
     if bad:

@@ -232,7 +232,9 @@ def build_freeze_manifest(root, matrix_path, config_path, analysis_script, depen
     if not cfg_file.is_file():
         raise ManifestError(f"frozen configuration {config_path} not found")
     code_commit = json.loads(cfg_file.read_text(encoding="utf-8")).get("code_commit")
-    state = freeze_state(root, code_commit, allow_dirty_freeze_files=True)
+    from .freeze_binding import CODE_SIDE_FILES
+
+    state = freeze_state(root, code_commit, allow_dirty_freeze_files=True, must_exist_in_c=CODE_SIDE_FILES)
     if state["problems"]:
         raise ManifestError("not a valid freeze state:\n  - " + "\n  - ".join(state["problems"]))
     from .freeze_binding import REQUIRED_FROZEN

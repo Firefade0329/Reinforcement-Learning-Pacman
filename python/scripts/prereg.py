@@ -200,6 +200,9 @@ def freeze_problems(freeze: dict) -> list[str]:
     return problems + PR.check_frozen_config(freeze)
 
 
+from pacman_rl.freeze_binding import CODE_SIDE_FILES as FB_CODE_SIDE  # noqa: E402
+
+
 def binding_problems(root: Path | None = None) -> tuple[list[str], dict]:
     """The freeze binding check (configuration <-> manifest <-> actual files), shared by the training preflight and the final-evaluation preflight."""
     from pacman_rl.freeze_binding import binding_check
@@ -214,7 +217,7 @@ def preflight(freeze: dict, workers: int | None, *, allow_unfrozen: bool, root: 
     problems = PR.check_matrix_file()
     if not allow_unfrozen:
         problems += freeze_problems(freeze)
-        state = P.freeze_state(root or ROOT, freeze.get("code_commit"))
+        state = P.freeze_state(root or ROOT, freeze.get("code_commit"), must_exist_in_c=FB_CODE_SIDE)
         problems += state["problems"]
         bind, ev = binding_problems(root)  # before any task, model or subprocess exists
         problems += bind
@@ -380,7 +383,7 @@ def final_eval_preflight(freeze: dict, results: Path, rows, *, root: Path | None
     reject_env()
     root = root or ROOT
     problems = PR.check_matrix_file() + freeze_problems(freeze)
-    state = P.freeze_state(root, freeze.get("code_commit"))
+    state = P.freeze_state(root, freeze.get("code_commit"), must_exist_in_c=FB_CODE_SIDE)
     problems += state["problems"]
     bind, binding = binding_problems(root)
     problems += bind

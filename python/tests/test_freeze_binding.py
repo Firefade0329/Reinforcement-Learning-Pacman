@@ -268,3 +268,96 @@ def test_generator_refuses_a_frozen_path_that_has_no_text_rule(tmp_path, monkeyp
     prepare(r)
     with pytest.raises(seal.ManifestError, match=r"without a -text rule.*tools/extra.txt"):
         generate(r, extra_frozen=["tools/extra.txt"])
+
+
+# ------------------------------------------------------------------ the dependency snapshot (C7)
+from pacman_rl import freeze_binding as FBm  # noqa: E402
+
+GOOD = b"matplotlib==3.9.0\nnumpy==2.0.0\npytest==8.0.0\ntorch==2.5.1+cu121\n"
+
+
+def test_a_snapshot_committed_with_c_passes_both_entries(repo):
+    train_entry(repo)
+    final_entry(repo)
+
+
+@pytest.mark.parametrize("data,message", [
+    (b"\xef\xbb\xbf" + GOOD, "BOM"),
+    (GOOD.replace(b"\n", b"\r\n"), "CR characters"),
+    (GOOD[:-1], "exactly one newline"),
+    (GOOD + b"\n", "exactly one newline"),
+    (b"numpy==2.0.0\nmatplotlib==3.9.0\npytest==8.0.0\ntorch==2.5.1\n", "not sorted"),
+    (b"matplotlib>=3.9\nnumpy==2.0.0\npytest==8.0.0\ntorch==2.5.1\n", "not an exact"),
+    (b"# freeze\n" + GOOD, "not an exact"),
+    (b"-e git+https://example.invalid/x#egg=x\n" + GOOD, "not an exact"),
+    (GOOD + b"wheel @ file:///tmp/wheel.whl\n", "not an exact"),
+    (b"matplotlib==3.9.0\nnumpy==2.0.0\npytest==8.0.0\n", "torch is missing"),
+    (b"numpy==2.0.0\ntorch==2.5.1\n", "matplotlib is missing"),
+    (b"matplotlib==3.9.0\nnumpy==2.0.0\nnumpy==2.0.1\npytest==8.0.0\ntorch==2.5.1\n", "more than once"),
+    (b"\xff\xfe", "UTF-8"),
+    (b"", "empty"),
+])
+def test_snapshot_format_defects_are_refused(data, message):
+    assert any(message in x for x in FBm.lock_problems(data)), FBm.lock_problems(data)
+
+
+def test_exact_snapshot_with_local_version_suffix_and_mixed_case_sorted_like_pip_is_accepted():
+    data = b"Jinja2==3.1.4\nMarkupSafe==2.1.5\nmatplotlib==3.9.0\nnumpy==2.0.0\npytest==8.0.0\ntorch==2.5.1+cu121\ntyping_extensions==4.12.2\n"
+    assert FBm.lock_problems(data) == []
+
+
+def test_binding_check_applies_the_format_to_the_committed_snapshot(repo):
+    repo.commit_file(LOCK_REL, "numpy>=1\n")  # a requirements-style file posing as the snapshot (hash fields refreshed so only the format is at fault)
+    repo.amend_cfg(lambda c: c["to_fill_at_freeze"].__setitem__("dependency_lock_sha256", sha_of(repo.root / LOCK_REL)))
+    repo.amend_manifest(lambda m: m["frozen_files"].__setitem__(LOCK_REL, sha_of(repo.root / LOCK_REL)))
+    with pytest.raises(runner.Refused, match="dependency_lock.txt: .*not an exact"):
+        train_entry(repo)
+
+
+def test_wrong_snapshot_path_is_refused(repo):
+    repo.amend_manifest(lambda m: m.update(dependency_lock_path="python/requirements.txt"))
+    with pytest.raises(runner.Refused, match="dependency_lock_path must be docs/prereg/dependency_lock.txt"):
+        train_entry(repo)
+
+
+def test_the_analysis_numpy_file_cannot_pose_as_the_snapshot(repo):
+    req = "python/scripts/prereg_analysis.requirements.txt"
+    repo.amend_manifest(lambda m: m.update(dependency_lock_path=req))
+    with pytest.raises(runner.Refused, match="dependency_lock_path must be"):
+        train_entry(repo)
+    # and it is frozen separately: leaving it out is refused too
+    repo2 = repo
+    repo2.amend_manifest(lambda m: (m.update(dependency_lock_path=LOCK_REL), m["frozen_files"].pop(req)))
+    with pytest.raises(runner.Refused, match=rf"required frozen file '{req}' is not listed"):
+        train_entry(repo2)
+
+
+def test_snapshot_first_added_or_changed_in_f_is_refused(tmp_path, monkeypatch):
+    r = Repo(tmp_path / "late")
+    monkeypatch.setattr(PR, "MATRIX_FILE", r.root / "docs/prereg/matrix.csv")
+    r.git("rm", "-q", LOCK_REL)  # the snapshot is NOT part of C ...
+    r.git("commit", "-qm", "C without the snapshot")
+    r.C = r.git("rev-parse", "HEAD")
+    (r.root / LOCK_REL).write_bytes(GOOD)  # ... and appears first in F
+    r.freeze()
+    with pytest.raises(runner.Refused, match="dependency_lock.txt does not exist in the code commit C"):
+        train_entry(r)
+    # changed in F (present in C): the C->F rule refuses it, the lock is not freeze material
+    r2 = Repo(tmp_path / "changed")
+    r2.commit_file(LOCK_REL, GOOD.decode())
+    r2.C = r2.git("rev-parse", "HEAD")
+    r2.freeze()
+    train_entry(r2)
+    r2.commit_file(LOCK_REL, GOOD.decode().replace("2.0.0", "2.0.1"))
+    with pytest.raises(runner.Refused, match="not freeze material.*dependency_lock.txt"):
+        train_entry(r2)
+
+
+def test_generator_refuses_a_missing_snapshot_in_c_and_a_bad_format(tmp_path, monkeypatch):
+    r = Repo(tmp_path / "gen")
+    monkeypatch.setattr(PR, "MATRIX_FILE", r.root / "docs/prereg/matrix.csv")
+    r.commit_file(LOCK_REL, "torch>=2\n")
+    r.C = r.git("rev-parse", "HEAD")
+    prepare(r)
+    with pytest.raises(seal.ManifestError, match="dependency_lock.txt: .*not an exact"):
+        generate(r)

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -21,10 +22,14 @@ MATRIX_SHA256 = "5cbd4e7b2cf79f65c96180acfc61b1914fe2e8521c036218bc7c9a4db59f0df
 PREREG_REL = "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md"
 SPEC_REL = "docs/prereg/ANALYSIS_SPEC_v0.3.2.md"
 ATTR_REL = ".gitattributes"
+LOCK_REL = "docs/prereg/dependency_lock.txt"            # the complete runtime snapshot (pip freeze --all of the accepted environment); part of the code commit C
+ANALYSIS_REQ_REL = "python/scripts/prereg_analysis.requirements.txt"  # the analysis NumPy pin: frozen separately, never a substitute for the snapshot
+CODE_SIDE_FILES = (LOCK_REL, ATTR_REL)                   # must already exist in C; F may not add or change them
+LOCK_REQUIRED_PACKAGES = ("numpy", "torch", "matplotlib", "pytest")
 FREEZE_SCHEMA = "prereg-freeze-1"
 SPEC_VERSION = "0.3.2"
 # files that must be listed (and are then hashed) in every formal manifest, besides manifest.analysis_script_path / dependency_lock_path
-REQUIRED_FROZEN = (MATRIX_REL, CONFIG_REL, PREREG_REL, SPEC_REL, ATTR_REL)  # .gitattributes: the -text rules are part of the byte contract
+REQUIRED_FROZEN = (MATRIX_REL, CONFIG_REL, PREREG_REL, SPEC_REL, ATTR_REL, ANALYSIS_REQ_REL)  # .gitattributes: the -text rules are part of the byte contract
 HEX64 = set("0123456789abcdef")
 
 
@@ -65,6 +70,45 @@ def safe_relative(root: Path, rel) -> Path | None:
     except ValueError:
         return None
     return full
+
+
+_LOCK_LINE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([A-Za-z0-9][A-Za-z0-9._+!-]*)$")
+
+
+def lock_problems(data: bytes) -> list[str]:
+    """Format of docs/prereg/dependency_lock.txt: UTF-8 without BOM, LF only, one `name==exact_version` per line (local suffixes such as +cu126 kept),
+    sorted by lower-cased name (the order of `pip freeze`), no blank / comment / option / URL / range lines, unique names, final newline, and at
+    least numpy, torch, matplotlib and pytest.  The format cannot prove that the snapshot is complete: that is the local executor's per-package check."""
+    p: list[str] = []
+    if data.startswith(b"\xef\xbb\xbf"):
+        p.append("BOM at the start (UTF-8 without BOM is required)")
+    if b"\r" in data:
+        p.append("CR characters (LF line endings are required)")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return p + ["not valid UTF-8"]
+    if not text:
+        return p + ["empty"]
+    if not text.endswith("\n") or text.endswith("\n\n"):
+        p.append("must end with exactly one newline and contain no blank line")
+    names = []
+    for i, line in enumerate(text.rstrip("\n").split("\n"), 1):
+        m = _LOCK_LINE.match(line)
+        if not m:
+            p.append(f"line {i} {line!r} is not an exact `name==version` entry (ranges, comments, blank lines, URLs, editable installs are not allowed)")
+        else:
+            names.append(m.group(1))
+    low = [n.lower() for n in names]
+    if low != sorted(low):
+        p.append("entries are not sorted by lower-cased name (the order of `pip freeze`)")
+    norm = [re.sub(r"[-_.]+", "-", n.lower()) for n in names]
+    if len(set(norm)) != len(norm):
+        p.append("a package appears more than once")
+    for need in LOCK_REQUIRED_PACKAGES:
+        if need not in norm:
+            p.append(f"top-level dependency {need} is missing")
+    return p
 
 
 def check_binding(root: Path, config, manifest, *, require_complete: bool = True) -> list[str]:
@@ -108,6 +152,11 @@ def check_binding(root: Path, config, manifest, *, require_complete: bool = True
         got = sha256_bytes_of(full)
         if got != want:
             problems.append(f"{rel}: the file's SHA-256 {got} differs from the frozen {want}")
+    if manifest.get("dependency_lock_path") != LOCK_REL:
+        problems.append(f"{MANIFEST_REL}: dependency_lock_path must be {LOCK_REL} (is {manifest.get('dependency_lock_path')!r}); the analysis NumPy file or a requirements file is not the snapshot")
+    lock_file = safe_relative(root, LOCK_REL)
+    if lock_file is not None and lock_file.is_file():
+        problems += [f"{LOCK_REL}: {x}" for x in lock_problems(lock_file.read_bytes())]
     if files.get(MATRIX_REL) != MATRIX_SHA256 and MATRIX_REL in files:
         problems.append(f"{MATRIX_REL}: the frozen hash is not the registered matrix hash {MATRIX_SHA256}")
     fill = config.get("to_fill_at_freeze")
