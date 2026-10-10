@@ -65,6 +65,13 @@ note, power / sleep settings confirmation.
 | B1 / B2 window record -- on / off consistency | done (CPU, in the test suite) | `tests/test_window_diag_wiring.py`: identical actions, RNG states, stored windows and their order, updates, losses, online / target / optimizer state, best step and weights; no extra model call, torch random, training-rng call, `.item()` / `.cpu()` |
 | B1 / B2 window record -- overhead on the A1000 | **open (local executor)** | quick (all 6 configurations) off / on pairs and load (2 res8 runs, buffer filled) off / on, at least two pairs in alternating order, separate output directories; thresholds: median wall-clock overhead <= 5 %, extra main-memory peak <= 16 MiB per process; no estimate is a measurement. If not met, B1 / B2 is postponed and no training parameter changes |
 | B1 / B2 window record -- freeze decision | open, **human** | whether the 30 formal runs use `--window-diagnostics` (recorded in the freeze record; a frozen-configuration field for it has NOT been added: it would need an owner decision), the hash of `window_diag.py` / the summary script in the freeze manifest, and `window_diagnostics_seal.json` after the 30 runs |
+| freeze binding at both entries (C5) | implemented, tests in `tests/test_freeze_binding.py` (synthetic repositories only) | before any task, subprocess, environment step, unseal permission or evaluation: manifest exists / complete / formal, C equal, every frozen file's raw bytes equal to the record, the three configuration hashes equal to the manifest entries. The real freeze-day run of both entries on the fresh clone of F is open (local executor) |
+| `-text` byte contract (C6) | implemented (`.gitattributes`), tests in `tests/test_gitattributes.py` | **open (local executor):** a FRESH clone of the exact F on the formal Windows machine, every frozen file's bytes / blob / hash, the manifest's own hash, effective `text` attribute and `core.autocrlf` state recorded without absolute paths |
+| dependency snapshot (C7) | format check implemented; the **content is open (local executor)** | `docs/prereg/dependency_lock.txt` from `python -m pip freeze --all` of the accepted environment, committed with C (not in F); record: generation command without local paths, UTC, Python / pip versions, anonymous machine id, candidate SHA, the per-package comparison, and the reason for any excluded entry (only the repository's own editable project may be excluded). The cloud side never generates or edits it |
+| environment evidence and protocol evidence (C1, C2) | implemented, tests in `tests/test_protocol_evidence.py`, `tests/test_formal_identity.py` | `final_eval_environment.json` with `machine_id`; `protocol_evidence` in the evaluation seal; the formal analysis verifies C / F / HEAD / environment before any statistic. CPU / OS / driver / TF32 / power details come from the freeze-time environment note (open, local executor) |
+| mandatory frozen items (C3) | implemented | hand-over, checklist, both diagnostic code files, `.gitattributes`, the analysis requirements file in `frozen_files`; the manifest never lists itself |
+| B1 / B2 seal and summary identity (C4) | implemented, tests in `tests/test_window_diag_summary.py` | `--freeze-manifest`, `--freeze-commit`; records need `meta.git_sha` = F, verified real emission, fixed header, finite numbers |
+| external freeze record, third-party receipt, start order | open, **human (owner)** | see section D |
 
 ```
 implementer (n-step oracle, analysis script, tooling): the cloud AI (same party as the test author)
@@ -73,3 +80,40 @@ review date:           ____
 what was checked:      ____
 freeze approval:       ____
 ```
+
+## D. Freeze day: roles, order and the external records (a procedure; nothing here has been executed or signed by the cloud implementer)
+
+Roles: the cloud AI = implementer and test author; the local executor = the A1000 operator; the owner = research owner, freeze approver and keeper of the external records.
+Whoever performs a step is the one who records it; no AI signs a human field, publishes a record or creates a release / tag. If a step needs more than a day, keep the order.
+
+1. Before C (cloud): code, tests and ordinary documents of this checklist; `-text` verified; only synthetic data. Hand over the candidate SHA, the test commands and their raw output.
+2. After the candidate acceptance, before the final C (local executor): resource acceptance on the A1000 with 2 workers, the 15 initial-hash pairs (construction only), save / load, CPU evaluation;
+   then `docs/prereg/dependency_lock.txt` as described in section C, delivered with its generation record. No sealed test seed is read; no score selects a recipe.
+3. After the snapshot arrives (cloud): the snapshot, `.gitattributes`, code, tests and README go into the final C; the snapshot is checked to be in C and the matrix to be unchanged; if the last change
+   could alter resource behaviour, step 2 is repeated. The complete C goes to the owner / local executor.
+4. Before F (owner + local executor): design and the human oracle / mathematics / literature review states (open fields stay open), the historical rehearsal disclosure below, the hard setting, 2 workers,
+   the 30 / 30 diagnostics command, CPU / 1 thread for the final evaluation; actual machine, software and power settings.
+5. After C is fixed (local executor prepares, cloud may check): put C and the three real hashes into the configuration, settle the three texts and the checklist, then compute the configuration hash and
+   generate the complete manifest (it never contains its own hash). Only the six permitted files form F; the snapshot and `.gitattributes` may not first appear in F. Per the owner's decision the cloud AI commits and
+   pushes F with those exact files after verifying each SHA-256 against the accompanying list and that the changed files are exactly the permitted six with an unchanged `python/` tree; any difference stops the step
+   and is reported to the owner; no byte is edited and no hash filled in by the cloud side.
+6. After F (local executor): a fresh clone of the exact F on the formal machine; clean tree, C -> F relation, effective `-text`, every frozen file's blob / working-tree bytes / hash, the manifest's own hash, the three
+   configuration hashes, both entry preflights (no training started). Hand over a record without local paths; a failure returns to the candidate, nothing is repaired on the spot.
+7. After the fresh clone passed, before any run (owner): approve this C / F; store `FREEZE_RECORD.json` as a GitHub Release asset (draft is enough; the tag must point to the full F; asset name `FREEZE_RECORD.json`),
+   obtain the server's asset id, `created_at` and the downloaded bytes' SHA-256 as `FREEZE_PUBLICATION_RECEIPT.json`, and archive both under `freeze_records/<full F>/` OUTSIDE the working tree. If nobody has uploaded
+   and received a real receipt, this step is not done.
+8. After approval and receipt (local executor): re-check HEAD = the external F, the manifest and record hashes and the clock; keep the first task's start UTC, the asset id and the original CLI output; start the 30 fresh
+   runs in matrix order with 2 workers and diagnostics on; rehearsal outputs are never reused. Store first, then start; the programs do not need the network.
+9. After the 30 runs (local executor): re-read all integrity material and pass the unseal gate; `final-eval` repeats the binding preflight and runs the CPU / 1 thread evaluation; keep the actual
+   `final_eval_environment.json`, the core and auxiliary seals and a separate `FINAL_EVAL_RECEIPT.json`; the one formal analysis, with failure / recovery records. The pre-start record is never overwritten or back-filled.
+
+`FREEZE_RECORD.json` (before the runs; the record never contains its own hash): `schema_version` `prereg-external-freeze-1`, `spec_version` 0.3.2, the document revision, the public repository URL,
+C and F (full SHAs), the manifest path and SHA-256, a copy of `frozen_files` (the matrix hash must be the registered `5cbd4e7b2cf79f65c96180acfc61b1914fe2e8521c036218bc7c9a4db59f0dfe`), the fresh-clone verification identifier / hash / date,
+the dependency snapshot (path, hash, anonymous machine, generation-record identifier, Python / pip versions, and the analysis requirements file separately), the freeze-time environment evidence (OS, driver, software, numerical switches,
+anonymous machine id, train / validation device; no user name, host name or absolute path), the execution plan (worker_count 2, the launch command without absolute paths, 30 / 30 diagnostics, hard setting, final CPU / 1 thread), the human approval identifier / hash / approved time (never invented
+before approval) and the preparer's own UTC (a self-report, not independent time evidence). The publication receipt holds repository / release / tag, full F, asset id, the asset's server `created_at`, the download URL, the downloaded bytes' SHA-256 and the manifest SHA-256 -- taken from the real GitHub API, not a self-written JSON.
+Dates in Git, file mtimes and self-reported UTC do not prove the order by themselves; the third party's stored bytes and `created_at` prove the bytes existed by then, the first task's start remains an execution record.
+
+Historical disclosure (to be copied into the external record by the owner, not completed by the cloud side): before this freeze, some short rehearsal runs of seed 100 / res4 / n1 (several attempts of at most about 75 seconds each) were started on the
+local machine, and one early `prereg_val` validation took place during those rehearsals. They are disclosed as process rehearsals, are not formal attempts, and none of their weights, logs or scores is used; the number of transitions
+and whether validation scores were produced were not given to the cloud side and are not asserted here.
