@@ -119,8 +119,33 @@ def finalize(run_dir: Path, name: str, cfg, attempt: int, order) -> list[str]:
     return []
 
 
-def execute(name: str, cfg, results: Path, order=None) -> str:
-    """Train one run from scratch.  Returns 'done' | 'skipped' | 'failed'."""
+def reuse_problems(run_dir: Path, cfg) -> list[str]:
+    """May an already complete run directory stand in for a run of `cfg` made now?  Only if the training configuration it was trained with is
+    exactly `cfg` and the python/ tree is the one that produced it; otherwise its numbers (steps, device, throughput, memory) describe a
+    different experiment."""
+    try:
+        done = json.loads((run_dir / "run_complete.json").read_text())
+    except (OSError, ValueError):
+        return ["run_complete.json is unreadable"]
+    problems = []
+    tc = run_dir / "train_config.json"
+    if not tc.is_file():
+        problems.append("train_config.json is missing: the configuration the run was trained with cannot be verified")
+    else:
+        have, want = json.loads(tc.read_text()), PR.expected_config_json(cfg)
+        diff = sorted(k for k in set(have) | set(want) if have.get(k) != want.get(k))
+        if diff:
+            problems.append("configuration differs: " + ", ".join(f"{k}: {have.get(k)!r} -> {want.get(k)!r}" for k in diff))
+    cur = P.code_version(ROOT)["python_tree_sha256"]
+    was = (done.get("code_version") or {}).get("python_tree_sha256")
+    if was != cur:
+        problems.append(f"the python/ tree differs from the one that produced the run ({str(was)[:12]} -> {str(cur)[:12]})")
+    return problems
+
+
+def execute(name: str, cfg, results: Path, order=None, *, check_reuse: bool = False) -> str:
+    """Train one run from scratch.  Returns 'done' | 'skipped' | 'failed' | 'refused' ('refused': a complete run exists but was made with a
+    different configuration or code version and check_reuse is set -- use another results directory)."""
     run_dir = results / "runs" / name
     run_dir.mkdir(parents=True, exist_ok=True)
     if not RX.take_lock(run_dir):
@@ -128,6 +153,11 @@ def execute(name: str, cfg, results: Path, order=None) -> str:
         return "skipped"
     try:
         if (run_dir / "run_complete.json").exists():
+            if check_reuse:
+                problems = reuse_problems(run_dir, cfg)
+                if problems:
+                    print(f"REFUSED {name}: the complete run in {run_dir.parent.parent.name} cannot be reused: {problems}; use a new --results-dir", flush=True)
+                    return "refused"
             print(f"skip {name} (complete)", flush=True)
             return "skipped"
         attempt = 1
@@ -216,18 +246,34 @@ def smoke(profile: str, device: str, results: Path, steps=None, pairs=None, work
                               eval_every=prof["eval_every"])
         jobs.append((f"smoke_{profile}_{arch}_n{n}_s{seed}", cfg))  # profile in the name: quick and load never share a run
     t0 = time.time()
-    with ThreadPoolExecutor(workers or prof["workers"]) as ex:
-        outcomes = list(ex.map(lambda j: execute(j[0], j[1], results), jobs))
-    report = {"profile": profile, "device": device, "note": "smoke runs only: scores are NOT used to choose anything", "runs": {}, "wall_seconds": None}
+    n_workers = workers or prof["workers"]
+
+    def timed(j):
+        t = time.time()
+        out = execute(j[0], j[1], results, check_reuse=True)
+        return out, round(time.time() - t, 1)
+
+    with ThreadPoolExecutor(n_workers) as ex:
+        outcomes = list(ex.map(timed, jobs))
+    report = {"profile": profile, "device": device, "workers": n_workers, "note": "smoke runs only: scores are NOT used to choose anything",
+              "runs": {}, "wall_seconds": None}
     from pacman_rl.evalrun import evaluate_checkpoint
 
     inits: dict = {}
-    for (name, cfg), outcome in zip(jobs, outcomes):
+    for (name, cfg), (outcome, seconds) in zip(jobs, outcomes):
         run_dir = results / "runs" / name
-        entry = {"outcome": outcome}
-        if outcome == "done" or (run_dir / "run_complete.json").exists():
+        entry = {"outcome": outcome, "invocation_seconds": seconds}
+        if outcome == "refused":
+            entry["refusal"] = reuse_problems(run_dir, cfg)
+        elif outcome == "done" or (run_dir / "run_complete.json").exists():
             done = json.loads((run_dir / "run_complete.json").read_text())
             s = done["summary"]
+            reused = outcome == "skipped"  # a complete run that matched this configuration and code was found and not trained again
+            entry["reused"] = reused
+            entry["origin"] = {"completed_utc": done["completed_utc"], "attempt": done["attempt"], "device": cfg.device, "git_sha": done["code_version"]["git_sha"],
+                               "python_tree_sha256": done["code_version"]["python_tree_sha256"], "train_config_sha256": P.file_sha256(run_dir / "train_config.json")}
+            entry["original_training_minutes"] = s.get("minutes")  # the time of the training run that produced these numbers
+            entry["throughput_source"] = "original training run (reused)" if reused else "this invocation"
             entry.update({k: s.get(k) for k in ("minutes", "updates", "env_steps", "replay_size", "episodes_started", "best_val_score", "best_env_steps",
                                                  "weights_finite", "nonfinite_loss_updates_this_session", "peak_working_set_mb", "peak_commit_mb", "peak_memory_error",
                                                  "cuda_max_allocated_mb", "cuda_max_reserved_mb")})
@@ -244,7 +290,8 @@ def smoke(profile: str, device: str, results: Path, steps=None, pairs=None, work
     report["initial_hash_pairs_equal"] = {f"{a}_s{s}": (len(set(v.values())) == 1 and len(v) == 2) for (a, s), v in inits.items() if len(v) == 2}
     if resume_check:
         report["interrupt_resume_check"] = interrupt_resume_check(results / f"interrupt_check_{profile}")
-    report["wall_seconds"] = round(time.time() - t0, 1)
+    report["wall_seconds"] = round(time.time() - t0, 1)  # this invocation only (reused runs cost no training time here)
+    report["ok"] = bool(all(r["outcome"] in ("done", "skipped") for r in report["runs"].values()) and report.get("interrupt_resume_check", {"ok": True})["ok"])
     report["environment"] = P.environment_info(device if device != "auto" else "cpu")
     results.mkdir(parents=True, exist_ok=True)
     (results / f"smoke_report_{profile}.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
@@ -468,7 +515,7 @@ def main(argv=None):
         pairs = [(x.split(":")[0], int(x.split(":")[1]), int(x.split(":")[2])) for x in a.pairs] if a.pairs else None
         rep = smoke(a.profile, a.device, a.results_dir, a.steps, pairs, a.workers)
         print(json.dumps({k: v for k, v in rep.items() if k != "runs"}, indent=1))
-        return 0 if all(r["outcome"] in ("done", "skipped") for r in rep["runs"].values()) else 1
+        return 0 if rep["ok"] else 1  # every run done / reused AND the interrupt-resume check passed
     return 2
 
 

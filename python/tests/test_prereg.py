@@ -267,3 +267,79 @@ def test_quick_then_load_in_the_same_results_dir_runs_both_and_keeps_both_report
     assert json.loads(before)["profile"] == "quick" and json.loads((tmp_path / "smoke_report_load.json").read_text())["profile"] == "load"
     assert not (tmp_path / "smoke_report.json").exists()  # the ambiguous shared name is gone
     assert (tmp_path / "interrupt_check_quick").exists() and (tmp_path / "interrupt_check_load").exists()
+
+
+# ------------------------------------------------------------------ smoke: a complete run is reused only for the same configuration and code
+def _reuse_cfg(steps=1200, device="cpu"):
+    row = next(r for r in PR.load_matrix() if r["arch"] == "cnn2" and r["n_step"] == 1 and r["seed"] == 100)
+    prof = runner.PROFILES["quick"]
+    return PR.train_config(row, FREEZE, seed=900, device=device, val_set=FREEZE["smoke_val_set"], total_env_steps=steps,
+                           learn_start=prof["learn_start"], buffer=prof["buffer"], eval_every=prof["eval_every"])
+
+
+@pytest.fixture(scope="module")
+def smoke_once(tmp_path_factory):
+    d = tmp_path_factory.mktemp("smoke_reuse")
+    rep = runner.smoke("quick", "cpu", d, steps=1200, pairs=[("cnn2", 1, 900)], resume_check=False)
+    return d, rep
+
+
+NAME = "smoke_quick_cnn2_n1_s900"
+
+
+def test_same_profile_different_steps_is_refused_and_leaves_the_complete_run_untouched(smoke_once):
+    d, first = smoke_once
+    run = d / "runs" / NAME
+    snap = {p.name: p.read_bytes() for p in run.iterdir() if p.is_file()}
+    rep = runner.smoke("quick", "cpu", d, steps=1000, pairs=[("cnn2", 1, 900)], resume_check=False)
+    e = rep["runs"][NAME]
+    assert e["outcome"] == "refused" and rep["ok"] is False and any("total_env_steps" in x for x in e["refusal"])
+    assert "env_steps" not in e and "reused" not in e  # no stale numbers are presented as this invocation's
+    assert {p.name: p.read_bytes() for p in run.iterdir() if p.is_file()} == snap
+    assert first["runs"][NAME]["outcome"] == "done"
+
+
+def test_a_different_device_or_arch_or_buffer_is_a_different_configuration(smoke_once):
+    d, _ = smoke_once
+    run = d / "runs" / NAME
+    assert runner.reuse_problems(run, _reuse_cfg()) == []
+    assert any("device" in p for p in runner.reuse_problems(run, _reuse_cfg(device="cuda")))
+    import dataclasses
+
+    for field, value in (("buffer", 5000), ("learn_start", 600), ("lr", 0.001), ("seed", 901)):
+        assert any(field in p for p in runner.reuse_problems(run, dataclasses.replace(_reuse_cfg(), **{field: value}))), field
+
+
+def test_a_changed_python_tree_refuses_reuse(smoke_once, monkeypatch):
+    d, _ = smoke_once
+    real = P.code_version
+    monkeypatch.setattr(P, "code_version", lambda *a, **k: {**real(*a, **k), "python_tree_sha256": "f" * 64})
+    problems = runner.reuse_problems(d / "runs" / NAME, _reuse_cfg())
+    assert any("python/ tree differs" in p for p in problems)
+
+
+def test_identical_rerun_reports_reuse_origin_original_minutes_and_this_invocations_cost(smoke_once):
+    d, first = smoke_once
+    rep = runner.smoke("quick", "cpu", d, steps=1200, pairs=[("cnn2", 1, 900)], resume_check=False)
+    e, e0 = rep["runs"][NAME], first["runs"][NAME]
+    assert e["outcome"] == "skipped" and e["reused"] is True and e0["reused"] is False and rep["ok"] is True and rep["workers"] == 1
+    assert e["original_training_minutes"] == e0["original_training_minutes"] == e0["minutes"] > 0
+    assert e["invocation_seconds"] < e0["invocation_seconds"] and rep["wall_seconds"] < e0["minutes"] * 60 + 60  # this call did not train
+    assert e["origin"] == e0["origin"] and e["origin"]["device"] == "cpu" and len(e["origin"]["python_tree_sha256"]) == 64 and e["origin"]["attempt"] == 1
+    assert e["throughput_source"] == "original training run (reused)" and e0["throughput_source"] == "this invocation"
+    assert str(d) not in json.dumps(rep)
+
+
+def test_smoke_cli_exits_nonzero_when_the_interrupt_resume_check_fails(monkeypatch, tmp_path):
+    base = {"profile": "quick", "runs": {"r": {"outcome": "done"}}, "interrupt_resume_check": {"ok": True}, "ok": True}
+    for ok_check, runs_ok, code in ((True, True, 0), (False, True, 1), (True, False, 1)):
+        rep = {**base, "runs": {"r": {"outcome": "done" if runs_ok else "failed"}}, "interrupt_resume_check": {"ok": ok_check}}
+        rep["ok"] = ok_check and runs_ok
+        monkeypatch.setattr(runner, "smoke", lambda *a, _r=rep, **k: _r)
+        assert runner.main(["smoke", "--profile", "quick", "--device", "cpu", "--results-dir", str(tmp_path)]) == code
+
+
+def test_smoke_report_ok_is_false_when_the_resume_check_fails(monkeypatch, tmp_path):
+    monkeypatch.setattr(runner, "interrupt_resume_check", lambda path: {"ok": False, "note": "x"})
+    rep = runner.smoke("quick", "cpu", tmp_path, steps=1200, pairs=[("cnn2", 1, 900)])
+    assert rep["ok"] is False and rep["runs"][NAME]["outcome"] == "done"

@@ -48,6 +48,14 @@ writes its own `smoke_report_<profile>.json` and `interrupt_check_<profile>/` in
 works. Running one profile again skips only its own completed runs and rewrites only its own report. (Before this was fixed the two
 profiles shared run names, so `load` after `quick` skipped its runs and overwrote the report.)
 
+A completed smoke run is reused only if it was trained with exactly the configuration requested now (steps, device, buffer, learn_start,
+seed, ... compared with the `train_config.json` the run wrote) and with the same `python/` tree. Otherwise the run is `refused`, nothing is
+trained or overwritten, the report says why, and the command exits with status 1: use another `--results-dir`. The report of a run that was
+reused says so (`reused: true`, `throughput_source: "original training run (reused)"`), keeps the `origin` of the numbers (completion time,
+attempt, device, commit, `python/` tree hash, hash of the training configuration) and the `original_training_minutes`, and separates this
+invocation's cost (`invocation_seconds` per run, `wall_seconds`, `workers`). The exit status is 0 only if every run is done or validly reused
+and the interrupt/resume check passed (`ok` in the report).
+
 1. `python python/scripts/prereg.py smoke --profile quick --device cuda`: 12 short runs (seeds 900/901, all six
    configurations, 2000 steps each, buffer 4000); checks the GPU path, save/load, last/best CPU evaluation, equality of the
    n=1/n=3 initial hashes (6 pairs here, 15 at the freeze) and the interrupt/resume path.
