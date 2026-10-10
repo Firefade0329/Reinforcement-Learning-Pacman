@@ -91,12 +91,8 @@ def finalize(run_dir: Path, name: str, cfg, attempt: int, order) -> list[str]:
     if train_config != PR.expected_config_json(cfg):
         problems.append("config.json differs from the configuration derived from the matrix row")
     summary = json.loads((run_dir / "summary.json").read_text())
-    if summary.get("env_steps") != cfg.total_env_steps:
-        problems.append(f"trained {summary.get('env_steps')} env steps, expected {cfg.total_env_steps}")
     log = [json.loads(x) for x in (run_dir / "train_log.jsonl").read_text().splitlines() if x.strip()]
     init = [r for r in log if r.get("type") == "init"]
-    if len(init) != 1 or any(r.get("type") == "resume" for r in log):
-        problems.append("train_log.jsonl must hold exactly one init row and no resume marker")
     if problems:
         return problems
     import torch
@@ -104,16 +100,9 @@ def finalize(run_dir: Path, name: str, cfg, attempt: int, order) -> list[str]:
     state = lambda f: P.state_hash(torch.load(run_dir / f, weights_only=False, map_location="cpu")["state_dict"])  # noqa: E731
     code_version = json.loads((run_dir / "code_version.json").read_text())
     row = next((r for r in PR.load_matrix() if r["run_name"] == name), {"order": order, "run_name": name, "primary_checkpoint": "last"})
-    sm = summary
-    from pacman_rl.evaluate import seed_set
-
-    boundaries = list(range(cfg.eval_every, cfg.total_env_steps + 1, cfg.eval_every))
-    steps_ok = sm.get("validation_steps") == boundaries + ([cfg.total_env_steps] if cfg.total_env_steps % cfg.eval_every else [])  # formal: exactly 15
-    if (sm.get("run_name") != name or sm.get("total_env_steps") != cfg.total_env_steps or not isinstance(sm.get("actual_updates"), int)
-            or not isinstance(sm.get("replay", {}).get("size"), int) or not steps_ok
-            or sm.get("validation_episodes_each") != len(seed_set(cfg.val_set))
-            or sm.get("checkpoints", {}).get("last", {}).get("step") != cfg.total_env_steps):
-        problems.append("summary.json does not satisfy the preregistered summary contract (budget / validation schedule / checkpoints)")
+    sp = PR.summary_contract_problems(summary, cfg, name, log)
+    if sp:
+        problems.append("summary.json does not satisfy the preregistered summary contract: " + "; ".join(sp))
         return problems
     freeze = PR.load_freeze()
     code_commit = freeze.get("code_commit") or code_version["git_sha"]  # C when frozen (the run's own HEAD is F); otherwise HEAD itself
@@ -308,7 +297,7 @@ def final_eval_run(results: Path, name: str, token, freeze: dict | None = None, 
         last = json.loads((run / "last" / "standard.json").read_text())
         (run / "best").mkdir(exist_ok=True)
         best = prereg_eval_payload(last["records"], run_name=name, cfg=PR.train_config(next(r for r in PR.load_matrix() if r["run_name"] == name), freeze),
-                                   label="best", step=done["summary"]["checkpoints"]["best"]["step"], weights_sha256=done["best_state_sha256"],
+                                   label="best", step=json.loads((run / "summary.json").read_text())["checkpoints"]["best"]["step"], weights_sha256=done["best_state_sha256"],
                                    code_commit=meta["code_commit"], scenario="standard", device=freeze["final_eval_device"],
                                    threads=freeze["final_eval_threads"], reused_from="last")
         with open(run / "best" / "standard.json", "x", encoding="utf-8") as f:

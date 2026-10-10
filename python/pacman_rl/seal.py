@@ -46,6 +46,33 @@ def _state_sha(path):
     return state_hash(torch.load(path, weights_only=False, map_location="cpu")["state_dict"])
 
 
+def current_material_problems(run: Path, cfg, name: str, done: dict) -> list[str]:
+    """Re-read the run's CURRENT summary.json and train_log.jsonl (not the copies cached in run_complete.json): they must exist, satisfy
+    the preregistered contract and equal the summary recorded when the run completed."""
+    from . import prereg as PR
+
+    problems = []
+    sp, lp = run / "summary.json", run / "train_log.jsonl"
+    if not sp.is_file():
+        return ["summary.json is missing"]
+    try:
+        summary = json.loads(sp.read_text(encoding="utf-8"))
+    except ValueError as e:
+        return [f"summary.json is not valid JSON ({e})"]
+    rows = None
+    if not lp.is_file():
+        problems.append("train_log.jsonl is missing")
+    else:
+        try:
+            rows = [json.loads(x) for x in lp.read_text(encoding="utf-8").splitlines() if x.strip()]
+        except ValueError as e:
+            problems.append(f"train_log.jsonl is not valid JSON ({e})")
+    problems += ["summary contract: " + x for x in PR.summary_contract_problems(summary, cfg, name, rows)]
+    if summary != done.get("summary"):
+        problems.append("summary.json differs from the summary recorded in run_complete.json (edited or replaced after completion)")
+    return problems
+
+
 def run_problems(results_dir: Path, rows, freeze, *, allow_unfrozen: bool, tiny_overrides: dict | None = None) -> tuple[list[str], dict]:
     """Everything that must hold before the sealed test seeds may be read.  Returns (problems, per-run facts)."""
     from . import prereg as PR
@@ -71,6 +98,8 @@ def run_problems(results_dir: Path, rows, freeze, *, allow_unfrozen: bool, tiny_
                                    PR.file_sha256(PR.FREEZE_FILE))
         if done["config"] != want or json.loads((run / "config.json").read_text()) != want:
             problems.append(f"{name}: recorded configuration differs from the one derived from the matrix row")
+        cfg = PR.train_config(r, freeze, **(tiny_overrides or {}))
+        problems += [f"{name}: {x}" for x in current_material_problems(run, cfg, name, done)]
         for label in ("last", "best"):
             f = run / f"{label}.pt"
             if not f.exists():

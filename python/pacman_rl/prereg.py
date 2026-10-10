@@ -144,3 +144,52 @@ def effective_config(row: dict, freeze: dict, cfg: TrainConfig, code_commit: str
               "hard_chase_p"):
         out[k] = freeze[k]
     return out
+
+
+def summary_contract_problems(summary, cfg: TrainConfig, name: str, log_rows=None) -> list[str]:
+    """Does a run's summary.json (and, when given, its train_log rows) satisfy the preregistered contract for ``cfg``?  Used when a run is
+    finalized AND again before the sealed seeds may be read, so a summary that was removed or edited afterwards cannot pass."""
+    from .evaluate import seed_set
+
+    if not isinstance(summary, dict):
+        return ["summary.json is not a JSON object"]
+    problems = []
+    boundaries = list(range(cfg.eval_every, cfg.total_env_steps + 1, cfg.eval_every))
+    want_steps = boundaries + ([cfg.total_env_steps] if cfg.total_env_steps % cfg.eval_every else [])  # formal: exactly 15
+    isint = lambda x: isinstance(x, int) and not isinstance(x, bool)  # noqa: E731
+    cks = summary.get("checkpoints") if isinstance(summary.get("checkpoints"), dict) else {}
+    last, best = (cks.get("last") or {}), (cks.get("best") or {})
+    if summary.get("run_name") != name:
+        problems.append(f"summary run_name {summary.get('run_name')!r} != {name!r}")
+    if summary.get("total_env_steps") != cfg.total_env_steps or summary.get("env_steps") != cfg.total_env_steps:
+        problems.append(f"budget: total_env_steps={summary.get('total_env_steps')}, env_steps={summary.get('env_steps')}, expected {cfg.total_env_steps}")
+    if not isint(summary.get("actual_updates")) or summary["actual_updates"] < 0:
+        problems.append("actual_updates must be a non-negative integer")
+    size = (summary.get("replay") or {}).get("size") if isinstance(summary.get("replay"), dict) else None
+    if not isint(size) or not 0 <= size <= cfg.buffer:
+        problems.append(f"replay.size must be an integer in [0, {cfg.buffer}]")
+    if summary.get("validation_steps") != want_steps:
+        problems.append(f"validation_steps {summary.get('validation_steps')} != {want_steps}")
+    if summary.get("validation_episodes_each") != len(seed_set(cfg.val_set)):
+        problems.append(f"validation_episodes_each != {len(seed_set(cfg.val_set))}")
+    if last.get("step") != cfg.total_env_steps:
+        problems.append("last checkpoint step != the full budget")
+    if best.get("step") not in want_steps:
+        problems.append("best checkpoint step is not one of the validation steps")
+    if any(not (isinstance(c.get("weights_sha256"), str) and len(c["weights_sha256"]) == 64) for c in (last, best)):
+        problems.append("checkpoint weight hashes missing")
+    if log_rows is not None:
+        init = [r for r in log_rows if r.get("type") == "init"]
+        evals = [r for r in log_rows if r.get("type") == "eval"]
+        if len(init) != 1 or any(r.get("type") == "resume" for r in log_rows):
+            problems.append("train_log.jsonl must hold exactly one init row and no resume marker")
+        elif summary.get("initial_state_dict_sha256") != init[0].get("online_hash"):
+            problems.append("summary initial hash differs from the init row of train_log.jsonl")
+        if [r.get("env_steps") for r in evals] != want_steps:
+            problems.append(f"train_log.jsonl validation rows {[r.get('env_steps') for r in evals]} != {want_steps}")
+        elif evals:
+            top = max(r["val_score"] for r in evals)
+            first = next(r["env_steps"] for r in evals if r["val_score"] == top)
+            if best.get("step") != first or summary.get("best_val_score") != top:
+                problems.append("best checkpoint step / score differ from the first strict maximum of the validation rows in train_log.jsonl")
+    return problems

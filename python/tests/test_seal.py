@@ -323,3 +323,73 @@ def test_frozen_mode_requires_the_frozen_code_commit_and_one_freeze_commit(fresh
     (run / "run_complete.json").write_text(json.dumps(d))
     problems, _ = seal.run_problems(results, ROWS, FREEZE, allow_unfrozen=True, tiny_overrides=TINY)
     assert any("different code versions" in p for p in problems)
+
+
+# ------------------------------------------------------------------ the CURRENT summary / log are re-checked before unsealing (P1-2)
+def _drop_summary(run):
+    (run / "summary.json").unlink()
+
+
+def _budget_drift(run):
+    d = json.loads((run / "summary.json").read_text())
+    d["total_env_steps"] = 120000
+    (run / "summary.json").write_text(json.dumps(d))
+
+
+def _duplicate_validation(run):
+    d = json.loads((run / "summary.json").read_text())
+    d["validation_steps"].append(d["validation_steps"][-1])
+    (run / "summary.json").write_text(json.dumps(d))
+
+
+def _best_step_changed(run):
+    d = json.loads((run / "summary.json").read_text())
+    other = [s for s in d["validation_steps"] if s != d["checkpoints"]["best"]["step"]][0]
+    d["checkpoints"]["best"]["step"] = other
+    (run / "summary.json").write_text(json.dumps(d))
+
+
+def _log_duplicated(run):
+    lines = (run / "train_log.jsonl").read_text().splitlines()
+    ev = [x for x in lines if '"eval"' in x][-1]
+    (run / "train_log.jsonl").write_text("\n".join(lines + [ev]) + "\n")
+
+
+CASES = [(_drop_summary, "summary.json is missing"), (_budget_drift, "budget"), (_duplicate_validation, "validation_steps"),
+         (_best_step_changed, "differs from the summary recorded"), (_log_duplicated, "validation rows")]
+
+
+@pytest.mark.parametrize("damage,expect", CASES, ids=[c[0].__name__ for c in CASES])
+def test_make_manifest_rejects_a_damaged_current_summary_or_log(fresh, damage, expect):
+    results, script = fresh
+    damage(results / "runs" / ROWS[0]["run_name"])
+    with pytest.raises(seal.ManifestError, match=expect):
+        build(results, script)
+
+
+@pytest.mark.parametrize("damage,expect", CASES, ids=[c[0].__name__ for c in CASES])
+def test_verify_manifest_rejects_material_damaged_after_the_manifest_was_written(fresh, damage, expect):
+    results, script = fresh
+    m = results / "m.json"
+    seal.write_manifest(m, build(results, script))
+    damage(results / "runs" / ROWS[0]["run_name"])
+    with pytest.raises(seal.ManifestError, match=expect):
+        verify(results, script, m)
+    with pytest.raises(runner.Refused, match=expect):  # and the final evaluation refuses before anything is read
+        runner.final_eval(m, results, script, rows=ROWS, freeze=FREEZE, allow_unfrozen=True, tiny=TINY, unseal=True)
+    assert not (results / "unseal_log.jsonl").exists()
+
+
+def test_final_evaluation_takes_the_best_step_from_the_current_summary_file(fresh):
+    results, script = fresh
+    name = ROWS[0]["run_name"]
+    run = results / "runs" / name
+    shutil.copy(run / "last.pt", run / "best.pt")
+    d = json.loads((run / "run_complete.json").read_text())
+    d["best_file_sha256"], d["best_state_sha256"] = d["last_file_sha256"], d["last_state_sha256"]
+    (run / "run_complete.json").write_text(json.dumps(d))
+    s = json.loads((run / "summary.json").read_text())
+    s["checkpoints"]["best"]["step"] = 48
+    (run / "summary.json").write_text(json.dumps(s))  # the file, not the cached copy, is authoritative
+    runner.final_eval_run(results, name, seal.UnsealToken(seal._ISSUE_KEY, "t"), FREEZE)
+    assert json.loads((run / "best" / "standard.json").read_text())["meta"]["checkpoint_step"] == 48
