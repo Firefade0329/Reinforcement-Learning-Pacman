@@ -24,6 +24,8 @@ python -m pacman_rl.cli eval-model --ckpt ../results/runs/my_run/best.pt --split
 python -m pacman_rl.cli replay --agent ../results/runs/my_run/best.pt --seed 10003   # -> results/replays/*.gif
 ```
 
+> `cli train` selects its best checkpoint on `--val_set`, whose default is the legacy `val` set (seeds 5000–5049), not the preregistered study's `prereg_val`. A run that is meant for the preregistered study must be started through `scripts/prereg.py`, which passes every field explicitly and takes `val_set` from the frozen configuration; a hand-started `cli train` is exploratory.
+
 | module | role |
 |---|---|
 | `maps.py` | the Java map cell-for-cell + neighbour table + all-pairs BFS distances |

@@ -174,7 +174,7 @@ reset) also contains such a deviation after a greedy start (B2, a descriptive co
   candidate still has to be re-measured (see `FREEZE_CHECKLIST.md`). B2 is a descriptive co-occurrence metric of deaths and deviating actions, not a design change.
 * After the 30 runs: `python python/scripts/window_diagnostics_summary.py seal --freeze-manifest docs/prereg/freeze_manifest.json --freeze-commit <F from the
   external freeze record>` (separate `window_diagnostics_seal.json`; it is not part of the evaluation seal or the analysis input; it refuses unless the manifest
-  freezes the two diagnostic code files, their current bytes match, HEAD is exactly F with the usual C -> F relation and a clean tree, every record says
+  freezes the two diagnostic code files, their current bytes match, HEAD is exactly F with the usual C -> F relation and a clean tree (clean = `git status` AND no `--skip-worktree` / `--assume-unchanged` flag AND the working-tree bytes of `python/` and `docs/prereg/` equal the committed blobs), every record says
   `meta.git_sha` = F, has the fixed header, a verified real replay emission and only finite numbers, `1e999` included), then `summarize` with the same two
   identity arguments and `--out-dir ...` (it re-verifies manifest hash, F, code hashes sealed = frozen = current, the 30 file hashes and every record) for the central description: per configuration the five per-run rates, mean and
   sd (ddof=1) over the runs with a defined rate (k of 5) and the pooled ratio as a separate quantity, per `h` and over the 15 start bins. No tests,
@@ -220,6 +220,8 @@ and pytest. `manifest.dependency_lock_path` must be this path, `to_fill_at_freez
 that first appears in F, or differs in F, is refused). `python/scripts/prereg_analysis.requirements.txt` (the analysis NumPy pin) is frozen
 separately as another required file and can never stand in for the snapshot, nor can `python/requirements.txt` (lower bounds only). The format check cannot
 show that the snapshot is complete; the per-package comparison with the accepted environment is the local executor's record.
+
+What the code does check against the real environment: at `prereg.py run` and at the final-evaluation preflight (and when the final-evaluation environment record is saved) every `name==version` of the snapshot is compared with the distribution installed in the interpreter that is about to train / evaluate (`importlib.metadata`, normalised names, exact version strings including local suffixes). A mismatch or a package that is not installed refuses the start and names the package; the number of compared packages (`environment_packages_compared`) and the snapshot's hash are part of the preflight evidence. Packages installed in the environment but absent from the snapshot are not detected, so the local executor's `pip freeze --all` record stays necessary. The formal analysis (`prereg_analysis.py`, standard library) re-validates the snapshot's format before it looks at any score and records the snapshot path, hash, entry count and `format_validated` in `provenance.protocol_evidence.dependency_lock`.
 
 ## Final-evaluation environment evidence and `protocol_evidence` of the evaluation seal
 

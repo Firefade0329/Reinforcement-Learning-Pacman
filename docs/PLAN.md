@@ -102,7 +102,7 @@ docs/              # PLAN.md  ACCEPTANCE.md  RESULTS.md(脚本生成)
 | # | 里程碑 | 交付物 | 验证 | 通过标准 |
 |---|---|---|---|---|
 | R0 | 方案 | 本文件 | 评审 | 已提交 |
-| R1 | 环境与算力校准 | `maps.py` `env.py` + 测试;CPU 训练速度实测 | `pytest python/tests/test_env.py` | 全部通过(见 8.1);训练预算写入 9 节 |
+| R1 | 环境与算力校准 | `maps.py` `env.py` + 测试;CPU 训练速度实测 | `cd python && PYTHONPATH=. pytest tests/test_env.py` | 全部通过(见 8.1);训练预算写入 9 节 |
 | R2 | 基线与评估框架 | L0–L3、`evaluate.py` | `cli eval --agent ...` | 基线表生成;`legacy` 与 Java 数据做**合理性核对**(报告,不设硬门槛——旧数据训练状态不明) |
 | R3 | 表格 Q | L4 | 训练+评估 | 配对 CI 显著优于 random;与 `legacy` 对比如实报告 |
 | R4 | DQN 基础设施 | L5–L7 代码、回放、训练器 | 单元测试 + 冒烟训练 | 小预算下 loss 下降、eval 得分高于 random;checkpoint 可复载且评估结果逐位一致 |
@@ -131,7 +131,7 @@ docs/              # PLAN.md  ACCEPTANCE.md  RESULTS.md(脚本生成)
 ### 8.1 自动验收(任何人可复现)
 ```bash
 pip install -r python/requirements.txt
-python -m pytest python/tests -q                    # M1
+(cd python && PYTHONPATH=. python -m pytest tests -q)   # M1(必须在 python/ 下并设置 PYTHONPATH,与 acceptance.sh 相同)
 bash python/scripts/acceptance.sh --quick           # M2:小预算冒烟(环境→基线→训练数百步→复载评估)
 python python/scripts/check_acceptance.py           # 读取 results/,逐条输出 PASS / FAIL / REPORTED(数据集只由环境变量 PACMAN_RESULTS_DIR 决定,脚本不识别 --results-dir)
 ```

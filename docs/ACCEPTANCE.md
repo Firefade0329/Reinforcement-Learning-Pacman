@@ -13,7 +13,7 @@ pip install -r python/requirements.txt          # numpy, torch (CPU 即可), mat
 
 | 步骤 | 命令 | 期望 |
 |---|---|---|
-| 1. 单元/集成测试 (M1) | `python -m pytest python/tests -q` | 全绿 |
+| 1. 单元/集成测试 (M1) | `cd python && PYTHONPATH=. python -m pytest tests -q`(PowerShell:`cd python; $env:PYTHONPATH='.'; python -m pytest tests -q`;与 `acceptance.sh` 内部相同,必须在 `python/` 下并设置 `PYTHONPATH`——在仓库根目录直接运行 `python -m pytest python/tests` 会因找不到 `pacman_rl` 而失败) | 全绿 |
 | 2. 快速冒烟 (M2) | `bash python/scripts/acceptance.sh --quick` | 约 1–10 分钟(取决于机器),以 `QUICK ACCEPTANCE PASSED` 结束;其中同一 checkpoint 评估两次的 JSON 必须逐字节相同,否则脚本以非零退出码失败 |
 | 3. 对已提交的完整结果判定 | `bash python/scripts/acceptance.sh` | 逐条输出 `PASS / FAIL / REPORTED / MISSING`,有 MUST 不满足则退出码 1 |
 | 4. 重新生成报告 | `python python/scripts/make_report.py` | 重写 `docs/RESULTS.md` 与 `results/figures/*.png`;文本部分应无变化(M1 行已不含测试耗时;测试计数会随环境变化,例如无 GPU 的机器跳过 1 项)。PNG 图的字节随 matplotlib 版本变化,**不要求逐字节一致** |
@@ -33,7 +33,7 @@ pip install -r python/requirements.txt          # numpy, torch (CPU 即可), mat
 3. **查泄漏**:
    - `python/pacman_rl/evaluate.py` 中测试种子 `10000–10299` 与验证种子 `5000–5049`、训练种子(≥ 1,000,000)互不相交(测试里有断言);
    - `dqn.py` 的 `train()` 只使用验证集挑 checkpoint;测试集只由 `cli eval-model --split test` 在训练结束后使用。
-4. **查旧代码**:`git diff 1e9da5c -- ReinforcementLearning HumanPlayGame DijkstraPathFinding '*.java' Images data/QTable.txt ':(exclude,glob)**/.DS_Store'` 为空(`.DS_Store` 是 macOS 垃圾文件,已按所有者要求删除,排除在比较之外)。
+4. **查旧代码**:`git diff 1e9da5c -- ReinforcementLearning HumanPlayGame DijkstraPathFinding Pacman.java PacmanRL.java PacmanDijkstra.java Images data/QTable.txt ':(exclude,glob)**/.DS_Store'` 为空(与 `check_acceptance.py` 的 M7 完全相同的路径集;`.DS_Store` 是 macOS 垃圾文件,已按所有者要求删除,排除在比较之外)。说明:旧版文档曾用 `'*.java'` 通配,它也会匹配新增的测试夹具 `python/scripts/java_harness/Harness.java`(16 行,供 `run_java_legacy.sh` 复制到临时目录运行原版 Java,是新增文件而不是对旧 Java 的修改),因而显示一个非空差异;原有 Java 源码、图片、Q 表自基线以来没有任何改动。
 5. **读局限**:`docs/RESULTS.md` 末尾和 `PLAN.md` 第 9 节"偏差记录",确认没有被隐藏的失败或事后改门槛。
 
 ## D. 验收结论模板
