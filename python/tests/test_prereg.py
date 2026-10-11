@@ -18,6 +18,18 @@ import prereg as runner  # noqa: E402
 
 ROWS = PR.load_matrix()
 FREEZE = PR.load_freeze()
+
+
+def draft_freeze() -> dict:
+    """A synthetic DRAFT configuration: the real (now frozen) file with exactly the fields that the freeze filled put back to the values of the committed
+    draft (docs/prereg/frozen_config_v0.3.2.json before the freeze: status "draft", the four top-level fields and every to_fill_at_freeze entry null)."""
+    d = json.loads(json.dumps(FREEZE))
+    d["status"] = "draft"
+    d.update(machine_id=None, worker_count=None, code_commit=None, hard_enabled=None)
+    d["to_fill_at_freeze"] = {k: None for k in (*runner.TO_FILL, "power_and_sleep_settings_confirmed")}
+    return d
+
+
 TINY = dict(total_env_steps=96, learn_start=32, eval_every=48, buffer=600, batch=8, device="cpu", val_set="smoke_eval")
 
 
@@ -78,10 +90,20 @@ def test_matrix_hash_mismatch_is_reported(tmp_path):
     assert any("SHA-256" in p for p in PR.check_matrix_file(f))
 
 
+# ------------------------------------------------------------------ the real frozen configuration
+def test_the_real_frozen_configuration_is_filled_and_self_consistent():
+    """The repository's own docs/prereg/frozen_config_v0.3.2.json (filled at the freeze commit F): status frozen, every open field filled,
+    and no problem reported by the same check that guards the formal entries (freeze_problems also runs check_frozen_config against the code)."""
+    assert FREEZE["status"] == "frozen"
+    c = FREEZE["code_commit"]
+    assert isinstance(c, str) and len(c) == 40 and set(c) <= set("0123456789abcdef")
+    assert runner.freeze_problems(FREEZE) == []
+
+
 # ------------------------------------------------------------------ preflight refusals
 def test_formal_run_refuses_a_draft_configuration():
     with pytest.raises(runner.Refused, match="not 'frozen'"):
-        runner.preflight(FREEZE, None, allow_unfrozen=False)
+        runner.preflight(draft_freeze(), None, allow_unfrozen=False)
 
 
 def test_environment_overrides_are_refused(monkeypatch):
@@ -99,12 +121,14 @@ def test_third_worker_needs_an_explicit_frozen_setting():
 
 
 def test_freeze_problems_lists_every_open_field():
-    probs = runner.freeze_problems(FREEZE)
+    draft = draft_freeze()
+    probs = runner.freeze_problems(draft)
+    assert any("not 'frozen'" in p for p in probs)
     for k in runner.TO_FILL:
         assert any(k in p for p in probs)
     for k in runner.TOP_LEVEL_TO_FILL:
         assert any(p.startswith(f"{k} is not filled") for p in probs)
-    frozen = json.loads(json.dumps(FREEZE))
+    frozen = json.loads(json.dumps(draft))
     frozen["status"] = "frozen"
     frozen.update(machine_id="m", worker_count=2, code_commit="c" * 40, hard_enabled=False)
     frozen["to_fill_at_freeze"].update({k: "x" for k in runner.TO_FILL}, power_and_sleep_settings_confirmed=True)
