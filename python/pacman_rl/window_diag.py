@@ -258,5 +258,5 @@ def write_atomic(path: Path, obj: dict) -> None:
     """JSON without NaN / Infinity, published atomically."""
     path = Path(path)
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(obj, indent=1, allow_nan=False), encoding="utf-8")
+    tmp.write_text(json.dumps(obj, indent=1, allow_nan=False), encoding="utf-8", newline="\n")
     os.replace(tmp, path)

@@ -889,10 +889,10 @@ def analyze(manifest: Path, input_root: Path, output_dir: Path, mode: str, proje
     out_parent.mkdir(parents=True, exist_ok=True)
     tmp = Path(tempfile.mkdtemp(prefix=".analysis_tmp_", dir=out_parent))
     try:
-        (tmp / "analysis.json").write_text(json.dumps(analysis, indent=1), encoding="utf-8")
-        (tmp / "REPORT.md").write_text(build_report(ctx, ep, expl, prim, index_sha, analysis["resource_records"], analysis["deviations"]), encoding="utf-8")
-        (tmp / "bootstrap_indices.sha256").write_text(f"{index_sha}  bootstrap_index_stream_12200000_bytes\n", encoding="utf-8")
-        (tmp / "input_manifest.json").write_text(json.dumps(input_manifest, indent=1), encoding="utf-8")
+        (tmp / "analysis.json").write_text(json.dumps(analysis, indent=1), encoding="utf-8", newline="\n")
+        (tmp / "REPORT.md").write_text(build_report(ctx, ep, expl, prim, index_sha, analysis["resource_records"], analysis["deviations"]), encoding="utf-8", newline="\n")
+        (tmp / "bootstrap_indices.sha256").write_text(f"{index_sha}  bootstrap_index_stream_12200000_bytes\n", encoding="utf-8", newline="\n")
+        (tmp / "input_manifest.json").write_text(json.dumps(input_manifest, indent=1), encoding="utf-8", newline="\n")
         write_csv(tmp / "bootstrap_replicates.csv", names, vals)
         os.rename(tmp, output_dir)  # atomic publish: all files or nothing
     except BaseException:

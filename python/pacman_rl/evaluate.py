@@ -152,7 +152,7 @@ def save_eval(path: Path, agent: str, scenario: str, split: str, records: list[d
                "records": records}
     if extra:
         payload["extra"] = extra
-    path.write_text(json.dumps(payload, indent=1))
+    path.write_text(json.dumps(payload, indent=1), newline="\n")  # LF on every platform (these files are compared and hashed)
     return payload
 
 

@@ -146,7 +146,7 @@ def build_manifest(results_dir, rows, freeze, analysis_script, *, allow_unfrozen
 
 def write_manifest(path, manifest: dict) -> str:
     text = json.dumps(manifest, indent=1, sort_keys=True)
-    Path(path).write_text(text, encoding="utf-8")
+    Path(path).write_text(text, encoding="utf-8", newline="\n")
     return hashlib.sha256(text.encode()).hexdigest()
 
 

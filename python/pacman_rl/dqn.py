@@ -150,7 +150,7 @@ def truncate_log_to(path: Path, upto_env_steps: int) -> tuple[int, int]:
     if partial:
         shutil.copy2(path, _backup_path(path))
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text("".join(x + "\n" for x in kept), encoding="utf-8")
+    tmp.write_text("".join(x + "\n" for x in kept), encoding="utf-8", newline="\n")
     os.replace(tmp, path)
     return len(rows) - len(kept), partial
 
@@ -237,7 +237,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
     device = resolve_device(cfg.device)
     rng = np.random.default_rng(cfg.seed)
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "config.json").write_text(json.dumps(asdict(cfg), indent=1))
+    (out_dir / "config.json").write_text(json.dumps(asdict(cfg), indent=1), newline="\n")
 
     observe = observe_fn(cfg.arch, cfg.obs)
     shape, dtype = obs_spec(cfg.arch, cfg.obs)
@@ -290,7 +290,7 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
     elif window_diagnostics:
         recorder = WindowRecorder(cfg.n_envs, cfg.n_step, cfg.gamma, cfg.total_env_steps)
         replay.on_emit = recorder.on_emit  # read-only verification that the replay emits exactly the windows the recorder counted
-    train_log = open(out_dir / "train_log.jsonl", "a" if resumed else "w")
+    train_log = open(out_dir / "train_log.jsonl", "a" if resumed else "w", newline="\n")
     if resumed:  # explicit marker so a reader of the log can see where the run was interrupted
         train_log.write(json.dumps({"type": "resume", "env_steps": env_steps, "updates": updates,
                                     "dropped_rows": dropped_rows, "partial_rows": partial_rows}) + "\n")
@@ -301,8 +301,8 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
         train_log.write(json.dumps({"type": "init", "arch": cfg.arch, "seed": cfg.seed, "n_step": cfg.n_step,
                                     "online_hash": online_hash, "target_hash": target_hash}) + "\n")
         train_log.flush()
-        (out_dir / "code_version.json").write_text(json.dumps(code_version(REPO_ROOT), indent=1), encoding="utf-8")
-        (out_dir / "environment.json").write_text(json.dumps(environment_info(device), indent=1), encoding="utf-8")
+        (out_dir / "code_version.json").write_text(json.dumps(code_version(REPO_ROOT), indent=1), encoding="utf-8", newline="\n")
+        (out_dir / "environment.json").write_text(json.dumps(environment_info(device), indent=1), encoding="utf-8", newline="\n")
     recent_scores, recent_rets, recent_deaths, losses = [], [], [], []
     bad_loss = torch.zeros((), device=device)  # number of non-finite losses this session, accumulated on the device (no sync)
     t0 = time.time() - minutes0 * 60
@@ -423,5 +423,5 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
         "initial_state_dict_sha256": init_rows[0]["online_hash"] if init_rows else None,
         "checkpoints": {"last": {"step": env_steps, "weights_sha256": state_hash(online)},
                         "best": {"step": best_step, "weights_sha256": state_hash(torch.load(out_dir / "best.pt", weights_only=False, map_location="cpu")["state_dict"])}}})
-    (out_dir / "summary.json").write_text(json.dumps(summary, indent=1))
+    (out_dir / "summary.json").write_text(json.dumps(summary, indent=1), newline="\n")
     return summary

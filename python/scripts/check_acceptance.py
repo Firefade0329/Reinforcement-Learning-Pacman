@@ -183,7 +183,7 @@ def main(argv: list[str]) -> int:
     result = run_checks("--run-tests" in argv)
     print(render(result))
     if "--json" in argv:
-        Path(argv[argv.index("--json") + 1]).write_text(json.dumps(result, indent=1, default=str), encoding="utf-8")
+        Path(argv[argv.index("--json") + 1]).write_text(json.dumps(result, indent=1, default=str), encoding="utf-8", newline="\n")
     return exit_code(result)
 
 

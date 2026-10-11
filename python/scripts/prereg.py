@@ -75,7 +75,7 @@ def archive_incomplete(results: Path, name: str, reason: str) -> int:
     for p in _content(run_dir):
         shutil.move(str(p), str(dest / p.name))
         moved.append(p.name)
-    with open(results / "attempts.jsonl", "a", encoding="utf-8") as f:
+    with open(results / "attempts.jsonl", "a", encoding="utf-8", newline="\n") as f:
         f.write(json.dumps({"run": name, "attempt": k, "reason": reason, "archived_utc": utc(), "files": sorted(moved)}) + "\n")
     return k
 
@@ -107,15 +107,15 @@ def finalize(run_dir: Path, name: str, cfg, attempt: int, order) -> list[str]:
     freeze = PR.load_freeze()
     code_commit = freeze.get("code_commit") or code_version["git_sha"]  # C when frozen (the run's own HEAD is F); otherwise HEAD itself
     config = PR.effective_config(row, freeze, cfg, code_commit, P.file_sha256(PR.FREEZE_FILE))
-    (run_dir / "train_config.json").write_text(json.dumps(train_config, indent=1))  # what train() wrote, kept for reference
-    (run_dir / "config.json").write_text(json.dumps(config, indent=1))              # merged effective configuration (the contract file)
+    (run_dir / "train_config.json").write_text(json.dumps(train_config, indent=1), newline="\n")  # what train() wrote, kept for reference
+    (run_dir / "config.json").write_text(json.dumps(config, indent=1), newline="\n")              # merged effective configuration (the contract file)
     done = {"run": name, "attempt": attempt, "matrix_order": order, "matrix_sha256": PR.MATRIX_SHA256, "config": config,
             "last_file_sha256": P.file_sha256(run_dir / "last.pt"), "best_file_sha256": P.file_sha256(run_dir / "best.pt"),
             "last_state_sha256": state("last.pt"), "best_state_sha256": state("best.pt"),
             "init_online_hash": init[0]["online_hash"], "summary": summary,
             "code_version": code_version, "code_commit": code_commit, "freeze_commit": code_version["git_sha"],
             "environment": json.loads((run_dir / "environment.json").read_text()), "completed_utc": utc()}
-    (run_dir / "run_complete.json").write_text(json.dumps(done, indent=1), encoding="utf-8")
+    (run_dir / "run_complete.json").write_text(json.dumps(done, indent=1), encoding="utf-8", newline="\n")
     return []
 
 
@@ -169,11 +169,11 @@ def execute(name: str, cfg, results: Path, order=None, *, check_reuse: bool = Fa
         env = {k: v for k, v in os.environ.items() if k not in FORBIDDEN_ENV}
         env.update({"PYTHONPATH": str(PY), "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1", "PACMAN_RESULTS_DIR": str(results)})
         cmd = [sys.executable, "-m", "pacman_rl.cli", "train", *PR.train_args(cfg, name), "--no-resume", *(["--window-diagnostics"] if diagnostics else [])]
-        with open(run_dir / "stdout.log", "w", encoding="utf-8") as f:
+        with open(run_dir / "stdout.log", "w", encoding="utf-8", newline="\n") as f:
             rc = subprocess.run(cmd, cwd=PY, env=env, stdout=f, stderr=subprocess.STDOUT).returncode
         problems = [f"training process exited with code {rc}"] if rc else finalize(run_dir, name, cfg, attempt, order)
         if problems:
-            (run_dir / "failure.json").write_text(json.dumps({"run": name, "attempt": attempt, "problems": problems, "utc": utc()}, indent=1))
+            (run_dir / "failure.json").write_text(json.dumps({"run": name, "attempt": attempt, "problems": problems, "utc": utc()}, indent=1), newline="\n")
             print(f"FAILED {name}: {problems}", flush=True)
             return "failed"
         print(f"done {name}", flush=True)
@@ -311,7 +311,7 @@ def smoke(profile: str, device: str, results: Path, steps=None, pairs=None, work
     report["ok"] = bool(all(r["outcome"] in ("done", "skipped") for r in report["runs"].values()) and report.get("interrupt_resume_check", {"ok": True})["ok"])
     report["environment"] = P.environment_info(device if device != "auto" else "cpu")
     results.mkdir(parents=True, exist_ok=True)
-    (results / f"smoke_report_{profile}.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
+    (results / f"smoke_report_{profile}.json").write_text(json.dumps(report, indent=1), encoding="utf-8", newline="\n")
     return report
 
 
@@ -364,7 +364,7 @@ def final_eval_run(results: Path, name: str, token, freeze: dict | None = None, 
                                    label="best", step=json.loads((run / "summary.json").read_text())["checkpoints"]["best"]["step"], weights_sha256=done["best_state_sha256"],
                                    code_commit=meta["code_commit"], scenario="standard", device=freeze["final_eval_device"],
                                    threads=freeze["final_eval_threads"], reused_from="last")
-        with open(run / "best" / "standard.json", "x", encoding="utf-8") as f:
+        with open(run / "best" / "standard.json", "x", encoding="utf-8", newline="\n") as f:
             json.dump(best, f, indent=1)
         written["best/standard"] = P.file_sha256(run / "best" / "standard.json")
     else:
@@ -413,7 +413,7 @@ def save_final_eval_environment(results: Path, freeze: dict, evidence: dict | No
     out = results / "final_eval_environment.json"
     if out.exists():
         raise Refused(f"{out.name} already exists; the final evaluation is one-shot")
-    out.write_text(json.dumps(rec, indent=1), encoding="utf-8")
+    out.write_text(json.dumps(rec, indent=1), encoding="utf-8", newline="\n")
 
 
 def final_eval(manifest: Path, results: Path, analysis_script: Path, *, unseal: bool, rows=None, freeze=None,
@@ -432,10 +432,10 @@ def final_eval(manifest: Path, results: Path, analysis_script: Path, *, unseal: 
     except seal.ManifestError as e:
         raise Refused(str(e))
     save_final_eval_environment(results, freeze, evidence, root=root)
-    with open(results / "unseal_log.jsonl", "a", encoding="utf-8") as f:
+    with open(results / "unseal_log.jsonl", "a", encoding="utf-8", newline="\n") as f:
         f.write(json.dumps({"utc": utc(), "manifest_sha256": token.manifest_sha256, "runs": len(rows)}) + "\n")
     index = {r["run_name"]: final_eval_run(results, r["run_name"], token, freeze) for r in rows}
-    (results / "final_eval_index.json").write_text(json.dumps(index, indent=1), encoding="utf-8")  # file hashes only, no scores
+    (results / "final_eval_index.json").write_text(json.dumps(index, indent=1), encoding="utf-8", newline="\n")  # file hashes only, no scores
     return index
 
 
@@ -512,7 +512,7 @@ def make_evaluation_seal(results: Path, pretest_manifest: Path, freeze_manifest:
         raise Refused(f"{out.name} already exists; the evaluation is sealed once")
     evidence = None if allow_unfrozen else evaluation_protocol_evidence(results, freeze, rows, root=root)
     obj = seal.build_evaluation_seal(results, rows, freeze, pretest_manifest, freeze_manifest, protocol_evidence=evidence)
-    out.write_text(json.dumps(obj, indent=1, sort_keys=True), encoding="utf-8")
+    out.write_text(json.dumps(obj, indent=1, sort_keys=True), encoding="utf-8", newline="\n")
     return P.file_sha256(out)
 
 
@@ -568,7 +568,7 @@ def main(argv=None):
         ev: dict = {}
         workers = preflight(freeze, a.workers, allow_unfrozen=False, evidence=ev)
         a.results_dir.mkdir(parents=True, exist_ok=True)
-        with open(a.results_dir / "preflight_log.jsonl", "a", encoding="utf-8") as f:  # identity and integrity only: no scores, no per-step work
+        with open(a.results_dir / "preflight_log.jsonl", "a", encoding="utf-8", newline="\n") as f:  # identity and integrity only: no scores, no per-step work
             f.write(json.dumps({**ev, "workers": workers, "window_diagnostics": a.window_diagnostics}) + "\n")
         print(json.dumps({"preflight": ev}))
         out = run_matrix(PR.load_matrix(), freeze, a.results_dir, workers, only=a.only, diagnostics=a.window_diagnostics)
@@ -602,7 +602,7 @@ def main(argv=None):
                                              deviations=json.loads(a.deviations_file.read_text(encoding="utf-8")) if a.deviations_file else ())
         except Exception as e:  # noqa: BLE001
             raise Refused(str(e))
-        a.out.write_text(json.dumps(obj, indent=1, sort_keys=True), encoding="utf-8")
+        a.out.write_text(json.dumps(obj, indent=1, sort_keys=True), encoding="utf-8", newline="\n")
         print(f"freeze manifest written for commit {obj['code_commit']}")
         return 0
     if a.cmd == "smoke":

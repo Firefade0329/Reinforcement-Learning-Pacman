@@ -57,7 +57,7 @@ def evaluate_checkpoint(ckpt, split: str, scenarios, out_dir, *, label: str | No
                                           weights_sha256=identity["state_sha256"], code_commit=prereg_meta["code_commit"], scenario=sc,
                                           device=device, threads=torch.get_num_threads(), synthetic=prereg_meta.get("synthetic", False))
             path.parent.mkdir(parents=True, exist_ok=True)
-            with open(path, "w" if force else "x", encoding="utf-8") as f:  # "x": never replaces an existing file
+            with open(path, "w" if force else "x", encoding="utf-8", newline="\n") as f:  # "x": never replaces an existing file
                 json.dump(payload, f, indent=1)
         else:
             save_eval(path, f"{ckpt.parent.name}/{label}", sc, split, records, extra=extra)

@@ -288,7 +288,7 @@ def render(summary: dict) -> str:
 
 def write_text_atomic(path: Path, text: str) -> None:
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
+    tmp.write_text(text, encoding="utf-8", newline="\n")
     os.replace(tmp, path)
 
 
@@ -326,8 +326,8 @@ def main(argv=None) -> int:
         summary["seal_sha256"] = sha256_file(seal_path)
         a.out_dir.parent.mkdir(parents=True, exist_ok=True)
         tmp = Path(tempfile.mkdtemp(prefix=".wd_tmp_", dir=a.out_dir.parent))
-        (tmp / "window_diagnostics_summary.json").write_text(json.dumps(summary, indent=1, allow_nan=False), encoding="utf-8")
-        (tmp / "window_diagnostics_summary.md").write_text(render(summary), encoding="utf-8")
+        (tmp / "window_diagnostics_summary.json").write_text(json.dumps(summary, indent=1, allow_nan=False), encoding="utf-8", newline="\n")
+        (tmp / "window_diagnostics_summary.md").write_text(render(summary), encoding="utf-8", newline="\n")
         os.rename(tmp, a.out_dir)
         print(f"summary written to {a.out_dir.name}")
         return 0
