@@ -1,7 +1,7 @@
 {
   "schema_version": "prereg-frozen-config-1",
   "spec_version": "0.3.2",
-  "status": "draft",
+  "status": "frozen",
   "_comment": "Frozen configuration of the preregistered architecture x n-step study.  status becomes 'frozen' only when every null below has been filled in at the freeze commit; `scripts/prereg.py run` refuses to start the formal runs before that.  Seed arrays are explicit JSON integer lists; tests check that they equal the constants the code actually uses.",
   "matrix_file": "matrix.csv",
   "matrix_sha256": "5cbd4e7b2cf79f65c96180acfc61b1914fe2e8521c036218bc7c9a4db59f0dfe",
@@ -23,21 +23,21 @@
   "eval_episodes": 50,
   "final_eval_device": "cpu",
   "final_eval_threads": 1,
-  "hard_enabled": null,
-  "code_commit": null,
-  "machine_id": null,
+  "hard_enabled": false,
+  "code_commit": "65199dfa120db8c522522b452ede367bf2814b8b",
+  "machine_id": "a1000-laptop-01",
   "train_device": "cuda",
   "validation_device": "cuda",
-  "worker_count": null,
+  "worker_count": 2,
   "max_workers_without_explicit_setting": 2,
   "max_episode_steps": 1000,
   "train_scenario": "standard",
   "hard_chase_p": 0.7,
   "to_fill_at_freeze": {
-    "analysis_script_sha256": null,
-    "preregistration_document_sha256": null,
-    "dependency_lock_sha256": null,
-    "driver_and_os_note": null,
-    "power_and_sleep_settings_confirmed": null
+    "analysis_script_sha256": "28484e4966e6ad579fdf095d53e7ba9dac9a406279c5c5067c3395b1bdb29d35",
+    "preregistration_document_sha256": "3030e3eee70eca95ecf03d70ea94d97e2bf0163c4bf07f5bc0dc70ad2c362dcc",
+    "dependency_lock_sha256": "e8f38f68282dd1ab78f8903e0e8f14fe92e1067f10291debe3c771c0cb047721",
+    "driver_and_os_note": "Windows 11 Enterprise 10.0.26100; NVIDIA driver 596.58; RTX A1000 6GB Laptop GPU; Python 3.12.10; torch 2.14.1+cu130",
+    "power_and_sleep_settings_confirmed": true
   }
 }

@@ -1,0 +1,27 @@
+{
+ "analysis_script_path": "python/scripts/prereg_analysis.py",
+ "code_commit": "65199dfa120db8c522522b452ede367bf2814b8b",
+ "complete": true,
+ "config_path": "docs/prereg/frozen_config_v0.3.2.json",
+ "dependency_lock_path": "docs/prereg/dependency_lock.txt",
+ "frozen_files": {
+  ".gitattributes": "594652809f7e8e47fa7b6c24163d13607c80100fcbbeffd77bb644fe942b8e1a",
+  "docs/prereg/ANALYSIS_SPEC_v0.3.2.md": "a4d64d46ed72d0c6e83cb1276f09e136a0639ee2db92954044a22cc642225100",
+  "docs/prereg/CLAUDE_HANDOFF_v0.3.2.md": "5078ad49177a0106d27bc912cccded91fc8529a2ef239a3a65fd5acfcd4abb74",
+  "docs/prereg/FREEZE_CHECKLIST.md": "0ef6ca8960bba0ec9a51205fde35b7e2ab9c8072c0b74cb403bf3a7a159dadba",
+  "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md": "3030e3eee70eca95ecf03d70ea94d97e2bf0163c4bf07f5bc0dc70ad2c362dcc",
+  "docs/prereg/dependency_lock.txt": "e8f38f68282dd1ab78f8903e0e8f14fe92e1067f10291debe3c771c0cb047721",
+  "docs/prereg/frozen_config_v0.3.2.json": "caea19f84ad8c91930b236f62231cb14c1e66a75301766e2405c497c17f132e7",
+  "docs/prereg/matrix.csv": "5cbd4e7b2cf79f65c96180acfc61b1914fe2e8521c036218bc7c9a4db59f0dfe",
+  "python/pacman_rl/window_diag.py": "82526407fd50f6ef414329f97df7486deb79b3fae671aaf7b8d19f259e26958b",
+  "python/scripts/prereg_analysis.py": "28484e4966e6ad579fdf095d53e7ba9dac9a406279c5c5067c3395b1bdb29d35",
+  "python/scripts/prereg_analysis.requirements.txt": "5c12d85e7c08038d1dd9ffbf8119d12ce808885230a47e2bf65dcd9f114659d5",
+  "python/scripts/window_diagnostics_summary.py": "888dda1e4964c2db4f7d5fd442f03ee26076c767a876dc25a5f8bed0c5a2a102"
+ },
+ "matrix_path": "docs/prereg/matrix.csv",
+ "project_root": ".",
+ "schema_version": "prereg-freeze-1",
+ "seal_path": "results_prereg/evaluation_seal.json",
+ "spec_version": "0.3.2",
+ "synthetic": false
+}
