@@ -5,7 +5,6 @@ The repository's REAL .gitattributes is copied into the fixture; the files are L
 bytes with the committed blob and with the original.  Linux with core.autocrlf=true reproduces the Windows conversion; the formal Windows fresh clone
 must still be checked by the local executor.  Implementer and test author are the same AI model."""
 import hashlib
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -102,4 +101,3 @@ def test_binding_check_hashes_agree_in_a_fresh_checkout_under_both_settings(tmp_
         clone = fresh_clone(tmp_path, origin, autocrlf, f"c_{autocrlf}")
         for rel, want in recorded.items():
             assert FB.sha256_bytes_of(clone / rel) == want, (rel, autocrlf)
-        shutil.rmtree(clone)

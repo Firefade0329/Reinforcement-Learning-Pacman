@@ -3,7 +3,6 @@
 Throwaway git repositories (C = code commit, F = freeze commit, results ignored by git), a fake anonymous machine record and fully synthetic scores.  One defect at a
 time on an otherwise valid formal study.  Only the standard library git is used by the analysis (no torch).  Implementer and test author are the same AI model."""
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import prereg_analysis as A  # noqa: E402
+from fsutil import rmtree_force  # noqa: E402
 from prereg_fixture import Study, sha, write_json  # noqa: E402
 
 D = {"cnn2": [10] * 5, "res4": [20] * 5, "res8": [30] * 5}
@@ -118,7 +118,7 @@ def test_a_dirty_tracked_file_is_refused(tmp_path):
 
 def test_a_directory_that_is_not_a_git_repository_is_refused(tmp_path):
     st = formal(tmp_path)
-    shutil.rmtree(st.root / ".git")
+    rmtree_force(st.root / ".git")  # read-only git objects on Windows
     refuse(tmp_path, st, "E_MANIFEST")
 
 
@@ -235,3 +235,16 @@ def test_the_analysis_script_does_not_import_the_training_package():
                          capture_output=True, text=True).stdout.strip()
     assert out == "False"
 
+
+def test_rmtree_force_removes_a_tree_with_read_only_files(tmp_path):
+    """The helper behind the 'not a repository' case: git objects are read-only on Windows (here the flag is set explicitly, whatever the platform)."""
+    import os
+    import stat
+
+    d = tmp_path / "ro" / "objects"
+    d.mkdir(parents=True)
+    f = d / "pack"
+    f.write_bytes(b"x")
+    os.chmod(f, stat.S_IREAD)
+    rmtree_force(tmp_path / "ro")
+    assert not (tmp_path / "ro").exists()
