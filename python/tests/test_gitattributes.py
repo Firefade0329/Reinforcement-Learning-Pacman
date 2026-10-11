@@ -25,6 +25,9 @@ FILES = {  # path -> bytes (LF text unless noted)
     "python/scripts/prereg_analysis.py": b"print('b')\n",
     "python/scripts/prereg_analysis.requirements.txt": b"numpy==0.0.0\n",
     "python/requirements.txt": b"numpy>=1\n",
+    "python/README.md": b"# python notes\nsecond line\n",
+    "python/tests/data/cases.json": b'{\n "a": 1\n}\n',
+    "python/scripts/run_all.sh": b"#!/usr/bin/env bash\nset -e\n",
 }
 
 
@@ -101,3 +104,12 @@ def test_binding_check_hashes_agree_in_a_fresh_checkout_under_both_settings(tmp_
         clone = fresh_clone(tmp_path, origin, autocrlf, f"c_{autocrlf}")
         for rel, want in recorded.items():
             assert FB.sha256_bytes_of(clone / rel) == want, (rel, autocrlf)
+
+
+def test_every_tracked_file_under_python_keeps_its_bytes_on_checkout():
+    """The python/ tree hash (python_tree_sha256) must not depend on the platform's checkout conversion: README, shell scripts and test data included."""
+    files = subprocess.run(["git", "ls-files", "python"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
+    assert len(files) > 50
+    out = subprocess.run(["git", "check-attr", "text", "--", *files], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip().splitlines()
+    not_unset = [line for line in out if not line.endswith("text: unset")]
+    assert not_unset == []
