@@ -14,7 +14,8 @@ import torch
 import torch.nn.functional as F
 
 from .env import FIELD_SHAPE, GHOST_FIELD_RANGE, GOLD_FIELD_RANGE, NUM_ACTIONS, OBS_SHAPE, STANDARD, PacmanEnv
-from .evaluate import SELECTION_SETS, TRAIN_SEED_BASE, evaluate_batched, seed_set, summarize, train_seed
+from .evaluate import (SELECTION_SETS, TRAIN_SEED_BASE, evaluate_batched, evaluation_partition_of, seed_set, summarize, train_seed,
+                       train_seed_block_problems)
 from .features import FEATURE_DIM, feature_vector
 from .models import build_model
 from .provenance import ROOT as REPO_ROOT, code_version, environment_info, peak_memory, state_hash
@@ -48,6 +49,11 @@ class TrainConfig:
     threads: int = 1
     device: str = "cpu"           # cpu | cuda | auto (cuda if available)
     val_set: str = "val"          # named seed set used for checkpoint selection (evaluate.SELECTION_SETS); test sets are refused
+
+    def __post_init__(self):
+        problems = train_seed_block_problems(self.seed)  # a negative seed would make the training episodes the evaluation seeds
+        if problems:
+            raise ValueError("; ".join(problems))
 
 
 def observe_fn(arch: str, obs: str = "fields"):
@@ -217,11 +223,17 @@ def collect_step(envs, obs, actions, replay, observe, ep_ret, reset_env, observe
 def checked_train_seed(cfg: "TrainConfig", k: int, resumed: bool = False) -> int:
     """``train_seed`` plus the runtime check that this run's episode stream cannot leave its own block: a fresh run
     starts n_envs episodes and every further episode needs at least one environment transition, so
-    k <= total_env_steps + n_envs (a resumed run restarts n_envs episodes per resume, so only the block bound applies)."""
+    k <= total_env_steps + n_envs (a resumed run restarts n_envs episodes per resume, so only the block bound applies).
+    The seed VALUE is checked as well, not only the index: a negative run seed or a seed inside any evaluation /
+    validation / sealed partition is refused."""
     if k >= TRAIN_SEED_BASE or (not resumed and k > cfg.total_env_steps + cfg.n_envs):
         raise AssertionError(f"training episode index {k} is outside this run's seed block "
                              f"(total_env_steps={cfg.total_env_steps}, n_envs={cfg.n_envs}, resumed={resumed})")
-    return train_seed(cfg.seed, k)
+    seed = train_seed(cfg.seed, k)  # raises for a negative run seed
+    part = evaluation_partition_of(seed)
+    if part is not None:
+        raise AssertionError(f"training episode seed {seed} lies in the {part!r} evaluation partition")
+    return seed
 
 
 def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop_after: int | None = None, window_diagnostics: bool = False) -> dict:
@@ -412,7 +424,9 @@ def train(cfg: TrainConfig, out_dir: Path, log=print, resume: bool = True, _stop
         f.unlink(missing_ok=True)
     summary = {"best_val_score": best_val, "best_env_steps": best_step, "updates": updates,
                "minutes": (time.time() - t0) / 60, "env_steps": env_steps, "replay_size": replay.size,
-               "episodes_started": episode_k, "nonfinite_loss_updates_this_session": int(bad_loss.item()),
+               "episodes_started": episode_k,
+               "training_episode_seeds": {"first": train_seed(cfg.seed, 0), "last": train_seed(cfg.seed, episode_k - 1), "count": episode_k},
+               "nonfinite_loss_updates_this_session": int(bad_loss.item()),
                "weights_finite": all(bool(torch.isfinite(p).all()) for p in online.parameters()), **peak_memory(device)}
     # fields of the preregistered summary contract (docs/prereg/): budget, final replay occupancy, updates, validation schedule, hashes
     log_rows = [json.loads(x) for x in (out_dir / "train_log.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]

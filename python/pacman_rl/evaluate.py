@@ -48,7 +48,36 @@ def seed_set(name: str, unseal=None) -> list[int]:
 
 
 def train_seed(run_seed: int, k: int) -> int:
+    """Seed of the k-th training episode of run ``run_seed``.  Only run_seed >= 0 and 0 <= k < TRAIN_SEED_BASE are defined:
+    run_seed = -1 would put the block at 0..999_999, i.e. on top of every evaluation / validation / sealed partition."""
+    if isinstance(run_seed, bool) or not isinstance(run_seed, int) or run_seed < 0:
+        raise ValueError(f"training run seed must be an integer >= 0, got {run_seed!r}")
+    if isinstance(k, bool) or not isinstance(k, int) or not 0 <= k < TRAIN_SEED_BASE:
+        raise ValueError(f"training episode index must be an integer in [0, {TRAIN_SEED_BASE}), got {k!r}")
     return TRAIN_SEED_BASE * (run_seed + 1) + k
+
+
+def evaluation_partition_of(seed: int) -> str | None:
+    """Name of the evaluation / validation / smoke / sealed partition that contains ``seed`` (None if it is in none)."""
+    for name, seeds in SEED_SETS.items():
+        if seeds and min(seeds) <= seed <= max(seeds):  # the partitions are contiguous ranges; the interval is the conservative view
+            return name
+    return None
+
+
+def train_seed_interval_problems(first: int, last: int) -> list[str]:
+    """Problems of a training-episode seed interval [first, last]: any overlap with a partition of ``SEED_SETS``."""
+    return [f"training episode seeds {first}..{last} overlap the {name!r} partition {min(seeds)}..{max(seeds)}"
+            for name, seeds in SEED_SETS.items() if seeds and first <= max(seeds) and last >= min(seeds)]
+
+
+def train_seed_block_problems(run_seed) -> list[str]:
+    """Problems of the WHOLE seed block ``TRAIN_SEED_BASE * (run_seed + 1) + [0, TRAIN_SEED_BASE)`` of a run: a negative or non-integer
+    run seed, or any overlap with an evaluation / validation / smoke / sealed partition."""
+    if isinstance(run_seed, bool) or not isinstance(run_seed, int) or run_seed < 0:
+        return [f"training run seed must be an integer >= 0, got {run_seed!r}"]
+    lo = TRAIN_SEED_BASE * (run_seed + 1)
+    return train_seed_interval_problems(lo, lo + TRAIN_SEED_BASE - 1)
 
 
 def splits() -> dict[str, list[int]]:

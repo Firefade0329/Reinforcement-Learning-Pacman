@@ -130,6 +130,12 @@ def check_frozen_config(freeze: dict) -> list[str]:
         problems.append("frozen config matrix_sha256 differs from the pinned value")
     if freeze["formal_run_seeds"] != list(SEEDS):
         problems.append("formal_run_seeds differs from the matrix design")
+    want_max = FIXED_ROW["total_env_steps"] + FIXED_ROW["n_envs"]  # a fresh run starts n_envs episodes, every further one needs a transition
+    if freeze.get("train_episode_index_max") != want_max:
+        problems.append(f"train_episode_index_max={freeze.get('train_episode_index_max')!r} != total_env_steps + n_envs = {want_max}")
+    for key in ("formal_run_seeds", "smoke_run_seeds"):  # the whole training seed block of every run seed must avoid every partition
+        for seed in freeze[key]:
+            problems += [f"{key}: run seed {seed}: {p}" for p in ev.train_seed_block_problems(seed)]
     return problems
 
 
@@ -149,7 +155,7 @@ def effective_config(row: dict, freeze: dict, cfg: TrainConfig, code_commit: str
 def summary_contract_problems(summary, cfg: TrainConfig, name: str, log_rows=None) -> list[str]:
     """Does a run's summary.json (and, when given, its train_log rows) satisfy the preregistered contract for ``cfg``?  Used when a run is
     finalized AND again before the sealed seeds may be read, so a summary that was removed or edited afterwards cannot pass."""
-    from .evaluate import seed_set
+    from .evaluate import seed_set, train_seed, train_seed_interval_problems
 
     if not isinstance(summary, dict):
         return ["summary.json is not a JSON object"]
@@ -165,6 +171,18 @@ def summary_contract_problems(summary, cfg: TrainConfig, name: str, log_rows=Non
         problems.append(f"budget: total_env_steps={summary.get('total_env_steps')}, env_steps={summary.get('env_steps')}, expected {cfg.total_env_steps}")
     if not isint(summary.get("actual_updates")) or summary["actual_updates"] < 0:
         problems.append("actual_updates must be a non-negative integer")
+    seeds = summary.get("training_episode_seeds")
+    if not (isinstance(seeds, dict) and all(isint(seeds.get(k)) for k in ("first", "last", "count"))):
+        problems.append("training_episode_seeds {first, last, count} missing or not integers")
+    else:
+        first, count = train_seed(cfg.seed, 0), seeds["count"]
+        if seeds["first"] != first or seeds["last"] != first + count - 1:
+            problems.append(f"training_episode_seeds {seeds} != the interval {first}..{first + count - 1} of run seed {cfg.seed}")
+        if not cfg.n_envs <= count <= cfg.total_env_steps + cfg.n_envs + 1:  # episode indices 0 .. total_env_steps + n_envs
+            problems.append(f"training_episode_seeds.count={count} outside [{cfg.n_envs}, {cfg.total_env_steps + cfg.n_envs + 1}]")
+        if summary.get("episodes_started") != count:
+            problems.append(f"episodes_started={summary.get('episodes_started')!r} != training_episode_seeds.count={count}")
+        problems += train_seed_interval_problems(seeds["first"], seeds["last"])
     size = (summary.get("replay") or {}).get("size") if isinstance(summary.get("replay"), dict) else None
     if not isint(size) or not 0 <= size <= cfg.buffer:
         problems.append(f"replay.size must be an integer in [0, {cfg.buffer}]")
