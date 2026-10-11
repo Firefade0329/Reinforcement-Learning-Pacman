@@ -65,7 +65,7 @@ Interaction c = d.res8 - d.cnn2: mean +45.77, sd 48.26, 95 % t [-14.16, 105.69],
 |---|---|
 | freeze record (made before any training run) | GitHub release `prereg-v0.3.2-r1-freeze-92bf82eca0da`, asset `FREEZE_RECORD.json` (id 630446051, SHA-256 `c088b74f8a703c6ec015d694fb5d5b9f5241a7c90b57e031110fcc17ea0e19b9`) |
 | results bundle (official analysis outputs, evaluation seal, per-run configuration / summary / training log / 300-episode evaluation records for last and best, process receipts, `MANIFEST_SHA256.txt`) | GitHub release `prereg-v0.3.2-r1-results-92bf82eca0da`, asset `prereg_results_bundle_92bf82ec.zip` (id 631720282, SHA-256 `c86048d7824695ee893fd57bc90263d8f47f35a11e9d49cdd8f55d3bfd5475ea`) |
-| the frozen protocol texts | `docs/prereg/` at commit `92bf82eca0dae731f7396ed5b4e887e4f3b200e4` (Chinese originals; an English translation is planned and will state that the original governs) |
+| the frozen protocol texts | `docs/prereg/` at commit `92bf82eca0dae731f7396ed5b4e887e4f3b200e4` (Chinese originals, which govern); English reading copies of the protocol and the analysis specification, a protocol summary and translation notes are in `docs/translations/` |
 | analysis script | `python/scripts/prereg_analysis.py` at the freeze commit (SHA-256 `28484e4966e6ad579fdf095d53e7ba9dac9a406279c5c5067c3395b1bdb29d35`) |
 
 The repository `main` may move beyond the freeze commit; the runs, the evaluation and the analysis were made at the freeze commit, and `docs/prereg/freeze_manifest.json` there lists the SHA-256 of every frozen file.
