@@ -9,6 +9,16 @@ This README file includes:
 * Performance data of Reinforcement Learning
 * Explanation of the source code
 
+Preregistered study: architecture x n-step
+==========================================
+Besides the original game and agents, the repository contains a preregistered study of how the n-step return length (n = 1 vs n = 3) interacts with the network architecture (cnn2 / res4 / res8) of a DQN agent on the Pacman map. The protocol was frozen and published before any formal training run; 30 runs were made once and analysed once.
+
+* Result in one line: **H1 supported** (Res4: n=1 beats n=3 by +70.85 points, 97.5 % t interval 49.52 to 92.18, 5/5 seeds), **H2 uncertain** (Res8 minus CNN2 difference +45.77, 97.5 % t interval -29.68 to 121.21). Mechanisms were not tested; one map, five training seeds.
+* Readable summary with errata and limits: [docs/PREREG_RESULTS.md](docs/PREREG_RESULTS.md)
+* Frozen protocol, run matrix and freeze manifest: [docs/prereg/](docs/prereg/) (the protocol texts are Chinese originals; an English translation is planned)
+* Evidence (GitHub releases): `prereg-v0.3.2-r1-freeze-92bf82eca0da` (freeze record, made before training) and `prereg-v0.3.2-r1-results-92bf82eca0da` (results bundle)
+* How to run the tooling: [docs/prereg/README.md](docs/prereg/README.md)
+
 Videos
 ======
 The first video shows the AI before training. Pacman is randomly exploring.
