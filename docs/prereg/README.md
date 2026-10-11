@@ -111,10 +111,9 @@ synthetic studies only (`python/tests/test_prereg_analysis.py`, fixtures F1-F8 a
 section 8, with hand-derived expected values); no real or old result is ever read. The human sign-off fields (reviewer, date, what was
 checked, freeze approval) are intentionally not filled in by the code or its author.
 
-Difference from the specification text, pending a specification revision: the sample variance / standard deviation is computed in exact
-rational arithmetic (`fractions.Fraction`) from the integer sums and converted to float once, whereas the specification text says float64 with
-`math.fsum`. The implementation was deliberately not changed; the two are expected to differ only at floating-point rounding level (not measured separately), and the spec text should be revised
-to describe the exact path (or the code changed on request).
+Variance path (specification revised): the sample variance / standard deviation is computed in exact rational arithmetic (`fractions.Fraction`) from the
+integer sums, then converted to float64 for the square root; there is no `math.fsum` path. The final specification text says exactly this, so there is no longer a
+difference between text and code (an earlier version of this README recorded it as pending a revision).
 
 What the outputs contain beyond the statistics (ANALYSIS_SPEC section 7): for every endpoint the per-seed integer counts and sources
 (run, file, SHA-256, 300 test seeds, integer sum) of the death / win / truncation rates and mean steps; model, rate and effect tables for
@@ -169,8 +168,10 @@ reset) also contains such a deviation after a greedy start (B2, a descriptive co
   configuration: `TrainConfig`, `config.json`, the effective configuration and the frozen configuration are unchanged, and the record's presence or
   absence changes no integrity check and no H1 / H2 number (tests). A resumed run writes no record.
 * The recorder uses only arrays the training loop already has; it calls no model, draws no random number and adds nothing to the replay. The wiring is
-  tested for exact equality of the run with and without it on the CPU; the cost on the GPU machine is NOT estimated here and must be measured
-  (acceptance: median wall-clock overhead <= 5 %, extra main memory <= 16 MiB per process; see `FREEZE_CHECKLIST.md`).
+  tested for exact equality of the run with and without it on the CPU. The owner has adopted it for all 30 runs. The cost on the GPU machine is not something the
+  cloud side can measure: the local executor reported, on the `6023b1a` baseline (off / on / on / off), a median wall-clock overhead of about -0.6 %, a peak working
+  set +1.5 MB and identical final weight hashes in all four pairs (thresholds: median overhead <= 5 %, extra main memory <= 16 MiB per process); the freeze
+  candidate still has to be re-measured (see `FREEZE_CHECKLIST.md`). B2 is a descriptive co-occurrence metric of deaths and deviating actions, not a design change.
 * After the 30 runs: `python python/scripts/window_diagnostics_summary.py seal --freeze-manifest docs/prereg/freeze_manifest.json --freeze-commit <F from the
   external freeze record>` (separate `window_diagnostics_seal.json`; it is not part of the evaluation seal or the analysis input; it refuses unless the manifest
   freezes the two diagnostic code files, their current bytes match, HEAD is exactly F with the usual C -> F relation and a clean tree, every record says
@@ -242,3 +243,10 @@ freeze-material files, tracked tree clean). Missing git, a timeout or any failed
 one `E_HASH_MISMATCH`), never a silent fallback to hash comparison. The result lists C, F, HEAD, the environment file path / hash / machine id and the checks in
 `analysis.json` (`provenance.protocol_evidence`), `input_manifest.json` and the report. Synthetic mode needs no repository. The file hashes cannot show that a frozen file was
 never read earlier; that stays with the external freeze record and the execution log.
+
+## Where the freeze procedure is specified
+
+This README describes the mechanisms; the procedure itself is in the final texts that are committed only at the freeze: the preregistration plan section 7 (7.1 C / F identity, binding
+check, `-text`, dependency snapshot; 7.2 / 7.2.1 external freeze record and third-party receipts; 7.4 the fields to fill; 7.5 the order), the hand-over section 5 (the nine-step table of
+roles) and the analysis specification sections 1.1 / 1.2. The repository-side checklist is `FREEZE_CHECKLIST.md` (section D). The sections above cover: C / F identity (Freeze identity), the
+binding check at both entries (Freeze binding check), the `-text` byte contract and the fresh-clone verification, the dependency snapshot committed with C, and the environment / protocol evidence.

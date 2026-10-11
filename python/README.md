@@ -6,10 +6,11 @@ acceptance manual: [`../docs/ACCEPTANCE.md`](../docs/ACCEPTANCE.md), generated r
 [`../docs/RESULTS.md`](../docs/RESULTS.md).  The original Java code in the repo root is untouched.
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt                 # Python >= 3.10
 python -m pytest tests -q                       # env fidelity, replay maths, models, reproducibility
 PACMAN_SIMULATE_WINDOWS_TEXT=1 python -m pytest tests -q   # same suite with Windows text-mode newlines (every text write without `newline=` writes CRLF)
 bash scripts/acceptance.sh --quick              # ~5-10 min smoke run
+PACMAN_RESULTS_DIR="$PWD/../results_gpu" python scripts/check_acceptance.py --run-tests   # which result set is checked is decided by this variable only (the script has no --results-dir option)
 bash scripts/run_all.sh                         # full reproduction (hours on 4 CPU cores)
 ```
 
