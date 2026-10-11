@@ -52,7 +52,7 @@ def test_valid_formal_study_passes_and_the_provenance_lists_c_f_head_and_the_env
     env = st.root / "results_prereg" / "final_eval_environment.json"
     assert prov["code_commit"] == st.commit and prov["freeze_commit"] == st.freeze_commit == prov["head"] == st.git("rev-parse", "HEAD")
     assert prov["final_eval_environment"] == {"path": "results_prereg/final_eval_environment.json", "sha256": sha(env), "machine_id": "synthetic"}
-    assert st.commit != st.freeze_commit and len(prov["git_checks"]) == 5
+    assert st.commit != st.freeze_commit and len(prov["git_checks"]) == 6
     rep = (out / "REPORT.md").read_text()
     assert st.commit in rep and st.freeze_commit in rep and sha(env) in rep
     assert json.loads((out / "input_manifest.json").read_text())["protocol_evidence"] == prov

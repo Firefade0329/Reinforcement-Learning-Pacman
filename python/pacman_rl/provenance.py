@@ -14,6 +14,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from .gitcheck import committed_blobs, hidden_change_problems, tree_sha256
+
 ROOT = Path(__file__).resolve().parents[2]
 ENV_KEYS = ("python", "torch", "numpy", "cuda_runtime", "cudnn", "device_type", "gpu_name", "torch_threads",
             "deterministic_algorithms", "cudnn_deterministic", "cudnn_benchmark")
@@ -65,22 +67,29 @@ def _git(root: Path, *args: str):
 def code_version(root: Path | None = None, extra_files: dict[str, str] | None = None) -> dict:
     """Which code produced a run: full git SHA, whether the working tree differed from it (and a hash of that
     difference), a hash over the CURRENT contents of every tracked file under python/, and sha256 of named extra files
-    (preregistration matrix, frozen configuration, analysis script ...; paths relative to the repository)."""
+    (preregistration matrix, frozen configuration, analysis script ...; paths relative to the repository).
+
+    ``git_dirty`` is not only ``git status``: ``--skip-worktree`` / ``--assume-unchanged`` blind it, so a tracked file carrying such an
+    index flag, or a python/ (or named extra) file whose working-tree bytes differ from the committed blob, also makes the tree dirty.
+    ``python_tree_sha256_git`` is the same hash computed from the committed blobs of python/; ``hidden_changes`` lists what was found."""
     root = Path(root or ROOT)
     sha = _git(root, "rev-parse", "HEAD")
     status = _git(root, "status", "--porcelain", "--untracked-files=no")
-    dirty = None if status is None else bool(status)
-    diff = _git(root, "diff", "HEAD") if dirty else None
+    hidden = [] if sha is None else hidden_change_problems(root, ("python",), extra=tuple(extra_files or ()))
+    dirty = None if status is None else bool(status) or bool(hidden)
+    diff = _git(root, "diff", "HEAD") if status else None
     h = hashlib.sha256()
     tracked = (_git(root, "ls-files", "python") or "").splitlines()
     for rel in sorted(tracked):
         p = root / rel
         if p.is_file():
             h.update(rel.encode() + b"\0" + file_sha256(p).encode() + b"\n")
+    blobs = None if sha is None else committed_blobs(root, ("python",))
     files = {rel: (file_sha256(root / rel) if (root / rel).is_file() else None) for rel in sorted(extra_files or {})}
     return {"git_sha": sha, "git_dirty": dirty,
             "git_diff_sha256": hashlib.sha256(diff.encode()).hexdigest() if diff else None,
-            "python_tree_sha256": h.hexdigest() if tracked else None, "files": files}
+            "python_tree_sha256": h.hexdigest() if tracked else None,
+            "python_tree_sha256_git": tree_sha256(blobs) if blobs else None, "hidden_changes": hidden, "files": files}
 
 
 # Files that may differ between the CODE commit C and the FREEZE commit F (the commit the runs are made from).
@@ -129,6 +138,8 @@ def freeze_state(root: Path | None, code_commit: str | None, *, allow_dirty_free
     bad_dirty = sorted(f for f in dirty if not (allow_dirty_freeze_files and f in FREEZE_MATERIALS))
     if bad_dirty:
         problems.append(f"the working tree has uncommitted changes: {bad_dirty[:5]}")
+    # `git status` can be blinded (skip-worktree / assume-unchanged): the flags must be plain, and python/ plus the frozen documents must equal the committed blobs
+    problems += hidden_change_problems(root, ("python", "docs/prereg"), skip=FREEZE_MATERIALS if allow_dirty_freeze_files else ())
     return out
 
 

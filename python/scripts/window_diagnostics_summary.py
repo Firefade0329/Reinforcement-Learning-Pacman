@@ -111,6 +111,42 @@ def _git(root: Path, *args: str, allow_fail=False):
     return r
 
 
+def _hidden_git_problems(root: Path, prefixes=("python", "docs/prereg")) -> list[str]:
+    """What ``git status`` cannot see: tracked files carrying a skip-worktree / assume-unchanged flag (``git ls-files -v`` shows anything but ``H``) and
+    files under ``prefixes`` whose working-tree bytes differ from the HEAD blob.  Standard-library copy of ``pacman_rl/gitcheck.py`` (this script imports nothing from it)."""
+    out = []
+    try:
+        r = subprocess.run(["git", "ls-files", "-v", "-z"], cwd=root, capture_output=True, timeout=120)
+        t = subprocess.run(["git", "ls-tree", "-r", "-z", "HEAD", "--", *prefixes], cwd=root, capture_output=True, timeout=120)
+        entries = []
+        for e in t.stdout.split(b"\0"):
+            if e:
+                meta, path = e.split(b"\t", 1)
+                mode, typ, sha = meta.split()
+                if typ == b"blob" and mode != b"120000":
+                    entries.append((path.decode("utf-8", "replace"), sha))
+        b = subprocess.run(["git", "cat-file", "--batch"], cwd=root, capture_output=True, timeout=120, input=b"".join(sha + b"\n" for _, sha in entries)) if entries else None
+    except (OSError, subprocess.SubprocessError) as e:
+        return [f"git is unavailable or timed out: {e}"]
+    if r.returncode != 0 or t.returncode != 0 or (b is not None and b.returncode != 0):
+        return ["git could not list the index flags / read the committed blobs"]
+    flagged = sorted(f"{e[2:].decode('utf-8', 'replace')} [{e[:1].decode('ascii', 'replace')}]" for e in r.stdout.split(b"\0") if e and e[:1] != b"H")
+    if flagged:
+        out.append(f"tracked files carry a skip-worktree / assume-unchanged index flag: {flagged[:5]}")
+    bad, pos = [], 0
+    for path, sha in entries:
+        end = b.stdout.index(b"\n", pos)
+        size = int(b.stdout[pos:end].split()[2])
+        blob = b.stdout[end + 1:end + 1 + size]
+        pos = end + 1 + size + 1
+        p = root / path
+        if not p.is_file() or p.read_bytes() != blob:
+            bad.append(path)
+    if bad:
+        out.append(f"{len(bad)} file(s) differ between the working tree and the committed git blob: {bad[:5]}")
+    return out
+
+
 def freeze_context(manifest_path: Path, root: Path, external_f: str) -> dict:
     """The frozen identity the auxiliary tools rely on: the manifest (formal, complete) and its two frozen diagnostic-code hashes, the external F, and the current
     repository being exactly F (C an ancestor, equal python/ trees, C -> F differences within the six freeze-material files, clean tracked tree)."""
@@ -150,6 +186,9 @@ def freeze_context(manifest_path: Path, root: Path, external_f: str) -> dict:
         raise DiagError(f"files outside the six freeze-material files differ between C and F: {outside[:5]}")
     if [x for x in _git(root, "status", "--porcelain", "--untracked-files=no").stdout.splitlines() if x.strip()]:
         raise DiagError("the working tree has uncommitted changes to tracked files")
+    hidden = _hidden_git_problems(root)
+    if hidden:
+        raise DiagError("the working tree is not what git says: " + hidden[0])
     return {"code_commit": c, "freeze_commit": external_f, "freeze_manifest_sha256": sha256_file(manifest_path), "frozen_code_sha256": frozen_code}
 
 

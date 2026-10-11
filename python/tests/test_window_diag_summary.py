@@ -52,6 +52,7 @@ class FrozenRepo:
             (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(REPO / rel, self.root / rel)
         (self.root / ".gitignore").write_text("results_prereg/\n", newline="\n")
+        (self.root / "python" / "pacman_rl" / "other.py").write_text("VALUE = 1\n", newline="\n")  # ordinary code that the manifest does not freeze (F2 tamper target)
         (self.root / "docs" / "prereg").mkdir(parents=True)
         self.git("init", "-q")
         self.C = self.commit("C")

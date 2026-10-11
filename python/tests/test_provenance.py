@@ -117,7 +117,7 @@ def test_train_writes_environment_and_code_version_without_paths(tmp_path):
     env = json.loads((run / "environment.json").read_text())
     assert set(env) == set(P.ENV_KEYS) and env["device_type"] == "cpu" and env["gpu_name"] is None and env["torch_threads"] == 1
     cv = json.loads((run / "code_version.json").read_text())
-    assert set(cv) == {"git_sha", "git_dirty", "git_diff_sha256", "python_tree_sha256", "files"}
+    assert set(cv) == {"git_sha", "git_dirty", "git_diff_sha256", "python_tree_sha256", "python_tree_sha256_git", "hidden_changes", "files"}
     blob = (run / "environment.json").read_text() + (run / "code_version.json").read_text()
     for f in {socket.gethostname(), getpass.getuser(), str(tmp_path), str(REPO), str(Path.home())} - {""}:
         assert f not in blob

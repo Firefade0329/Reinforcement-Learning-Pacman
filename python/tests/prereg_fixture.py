@@ -101,7 +101,8 @@ class Study:
         (self.prereg / "dependency_lock.txt").write_text("matplotlib==0.0.0\nnumpy==0.0.0\npytest==0.0.0\ntorch==0.0.0\n", newline="\n")  # clearly fake pins
         shutil.copy(REPO / ".gitattributes", self.root / ".gitattributes")
         (self.root / ".gitignore").write_text("results_prereg/\n", newline="\n")  # the results are never part of C or F
-        for rel, text in (("python/pacman_rl/window_diag.py", "# fake diagnostic definition\n"), ("python/scripts/window_diagnostics_summary.py", "# fake diagnostic summary\n"),
+        for rel, text in (("python/pacman_rl/other.py", "VALUE = 1\n"),  # an ordinary code file that no manifest freezes (F2 tamper target)
+                          ("python/pacman_rl/window_diag.py", "# fake diagnostic definition\n"), ("python/scripts/window_diagnostics_summary.py", "# fake diagnostic summary\n"),
                           ("python/scripts/prereg_analysis.requirements.txt", "numpy==0.0.0\n")):
             (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
             (self.root / rel).write_text(text, newline="\n")
