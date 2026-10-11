@@ -699,3 +699,47 @@ def test_a_draft_configuration_cannot_pose_as_formal_or_synthetic(tmp_path):
     with pytest.raises(A.AnalysisError) as e2:
         A.analyze(st2.manifest, st2.runs, tmp_path / "o2", "synthetic")
     assert e2.value.obj["code"] == "E_CONFIG_MISMATCH"
+
+
+# ------------------------------------------------------------------ single-fault tests of the five summary checks (external review F4: each was untested)
+SUMMARY = f"{R0}/summary.json"
+
+
+def test_summary_run_name_must_be_the_runs_own_name(study, tmp_path):
+    study.edit_json(R0, "summary.json", lambda d: d.update(run_name="prereg_res4_n1_s101"))
+    obj = fail(tmp_path, study, "E_METADATA_MISMATCH", run_name=R0, path=SUMMARY)
+    assert obj["expected"] == R0 and obj["actual"] == "prereg_res4_n1_s101" and "run_name" in obj["message"]
+
+
+@pytest.mark.parametrize("bad", [299999, 300001, 0, 150000])
+def test_summary_total_env_steps_must_be_the_300000_budget(study, tmp_path, bad):
+    study.edit_json(R0, "summary.json", lambda d: d.update(total_env_steps=bad))
+    obj = fail(tmp_path, study, "E_TRAIN_BUDGET", run_name=R0, path=SUMMARY)
+    assert obj["expected"] == 300000 and obj["actual"] == bad and "total_env_steps" in obj["message"]
+
+
+@pytest.mark.parametrize("bad", [-1, -10, 1.5, 74000.0, "74000", True, None])
+def test_summary_actual_updates_must_be_a_non_negative_integer(study, tmp_path, bad):
+    study.edit_json(R0, "summary.json", lambda d: d.update(actual_updates=bad))
+    obj = fail(tmp_path, study, "E_FIELD_TYPE", run_name=R0, path=SUMMARY)
+    assert "actual_updates" in obj["message"]
+
+
+def test_summary_actual_updates_zero_is_accepted(study, tmp_path):
+    """The boundary of the rule above: 0 is a non-negative integer (the run still has to satisfy every other check)."""
+    study.edit_json(R0, "summary.json", lambda d: d.update(actual_updates=0))
+    A.analyze(study.manifest, study.runs, tmp_path / "out_ok", "synthetic")
+
+
+@pytest.mark.parametrize("bad", [299999, 280000, 300001, 0])
+def test_last_checkpoint_step_must_be_the_full_budget(study, tmp_path, bad):
+    study.edit_json(R0, "summary.json", lambda d: d["checkpoints"]["last"].update(step=bad))
+    obj = fail(tmp_path, study, "E_TRAIN_BUDGET", run_name=R0, path=SUMMARY)
+    assert obj["expected"] == 300000 and obj["actual"] == bad and "last checkpoint" in obj["message"]
+
+
+@pytest.mark.parametrize("bad", [0, 25000, 299999, 300001, 20001])
+def test_best_checkpoint_step_must_be_one_of_the_fifteen_validation_steps(study, tmp_path, bad):
+    study.edit_json(R0, "summary.json", lambda d: d["checkpoints"]["best"].update(step=bad))
+    obj = fail(tmp_path, study, "E_VALIDATION_SCHEDULE", run_name=R0, path=SUMMARY)
+    assert obj["actual"] == bad and "best checkpoint" in obj["message"]
