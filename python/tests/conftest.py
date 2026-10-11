@@ -7,7 +7,7 @@ import pytest
 
 PREREG_MODULES = {"test_freeze_identity", "test_freeze_binding", "test_seal", "test_prereg", "test_prereg_analysis", "test_prereg_analysis_outputs",
                   "test_prereg_analysis_expected", "test_analysis_error_order", "test_formal_identity", "test_protocol_evidence", "test_provenance",
-                  "test_window_diag", "test_window_diag_wiring", "test_window_diag_summary", "test_death_penalty_contract", "test_gitattributes", "test_train_seed_guard", "test_hidden_changes"}
+                  "test_window_diag", "test_window_diag_wiring", "test_window_diag_summary", "test_death_penalty_contract", "test_gitattributes", "test_train_seed_guard", "test_hidden_changes", "test_environment_lock"}
 OVERRIDES = ("PACMAN_TRAIN_EXTRA", "PACMAN_STEPS", "PACMAN_DEVICE", "PACMAN_WORKERS", "PACMAN_SKIP_ALGO", "PACMAN_RESULTS_DIR")
 
 
@@ -16,6 +16,17 @@ def _no_pacman_overrides(request, monkeypatch):
     if request.module.__name__.split(".")[-1] in PREREG_MODULES:
         for var in OVERRIDES:
             monkeypatch.delenv(var, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _fake_environment_matches_the_fake_lock(request, monkeypatch):
+    """The formal entry points compare every `name==version` of dependency_lock.txt with the installed distribution (freeze_binding.environment_problems).
+    The fixtures of the freeze / seal / analysis tests carry a clearly fake snapshot (every pin 0.0.0), so those modules see an environment that "has" 0.0.0 of
+    everything.  The tests of the comparison itself (test_environment_lock.py) are NOT in this list and install their own lookup."""
+    if request.module.__name__.split(".")[-1] in (PREREG_MODULES | {"test_gitattributes", "test_lf_bytes"}) - {"test_environment_lock"}:
+        from pacman_rl import freeze_binding
+
+        monkeypatch.setattr(freeze_binding, "installed_version", lambda name: "0.0.0")
 
 
 # ---------------------------------------------------------------------------------------------- Windows text-mode simulation

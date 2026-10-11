@@ -42,7 +42,7 @@ def typed(row):
 
 class Study:
     def __init__(self, root: Path, d=None, score_fn=None, hard=False, hard_d=None, formal=False, best_fn=None, hard_fn=None, rec_fn=None,
-                 best_step_fn=None, summary_fn=None, attempts=(), deviations=None, pre_f=None, side_branch_c=False):
+                 best_step_fn=None, summary_fn=None, attempts=(), deviations=None, pre_f=None, side_branch_c=False, lock_bytes=None):
         """formal=True builds the same fake study but labelled for formal mode (synthetic=false, status 'frozen', all mandatory files frozen) INSIDE A REAL
         TEMPORARY GIT REPOSITORY: the code files are committed as C, the configuration / manifest / texts as F (HEAD), and a valid final-evaluation
         environment file and protocol_evidence are sealed, so that the formal identity checks can be tested; the DATA are still invented.
@@ -53,6 +53,7 @@ class Study:
         self.commit = COMMIT
         self.best_fn, self.hard_fn, self.rec_fn, self.best_step_fn, self.summary_fn = best_fn, hard_fn, rec_fn, best_step_fn, summary_fn
         self.attempts, self.deviations = list(attempts), deviations
+        self.lock_bytes = lock_bytes  # formal studies: content of docs/prereg/dependency_lock.txt in C (default: a clearly fake, well-formed snapshot)
         self.pre_f, self.side_branch_c = pre_f, side_branch_c  # formal studies: pre_f(study) edits the repository between C and F; side_branch_c: C is not an ancestor of F
         self.d = d or {a: [0] * 5 for a in ARCHS}
         self.score_fn = score_fn
@@ -98,7 +99,7 @@ class Study:
         self.prereg.mkdir(parents=True, exist_ok=True)
         shutil.copy(REPO / "docs" / "prereg" / "matrix.csv", self.prereg / "matrix.csv")
         (self.prereg / "analysis.py").write_bytes((REPO / "python" / "scripts" / "prereg_analysis.py").read_bytes())  # bytes: the copy is hashed
-        (self.prereg / "dependency_lock.txt").write_text("matplotlib==0.0.0\nnumpy==0.0.0\npytest==0.0.0\ntorch==0.0.0\n", newline="\n")  # clearly fake pins
+        (self.prereg / "dependency_lock.txt").write_bytes(self.lock_bytes or b"matplotlib==0.0.0\nnumpy==0.0.0\npytest==0.0.0\ntorch==0.0.0\n")  # clearly fake pins
         shutil.copy(REPO / ".gitattributes", self.root / ".gitattributes")
         (self.root / ".gitignore").write_text("results_prereg/\n", newline="\n")  # the results are never part of C or F
         for rel, text in (("python/pacman_rl/other.py", "VALUE = 1\n"),  # an ordinary code file that no manifest freezes (F2 tamper target)

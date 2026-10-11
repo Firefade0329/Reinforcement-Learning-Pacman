@@ -17,6 +17,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import sys
 import subprocess
@@ -143,6 +144,56 @@ def _git(root: Path, *args: str, allow_fail: bool = False):
     if r.returncode != 0 and not allow_fail:
         raise AnalysisError("E_MANIFEST", f"git {' '.join(args[:3])} failed: {r.stderr.strip()[:200]}")
     return r
+
+
+_LOCK_LINE = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([A-Za-z0-9][A-Za-z0-9._+!-]*)$")
+LOCK_REQUIRED_PACKAGES = ("numpy", "torch", "matplotlib", "pytest")
+
+
+def lock_format_problems(data: bytes) -> list[str]:
+    """Format of docs/prereg/dependency_lock.txt (standard-library copy of ``pacman_rl.freeze_binding.lock_problems``; a test keeps the two equal): UTF-8 without
+    BOM, LF only, one exact `name==version` per line sorted by lower-cased name, unique names, one final newline, and numpy / torch / matplotlib / pytest present."""
+    p: list[str] = []
+    if data.startswith(b"\xef\xbb\xbf"):
+        p.append("BOM at the start (UTF-8 without BOM is required)")
+    if b"\r" in data:
+        p.append("CR characters (LF line endings are required)")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return p + ["not valid UTF-8"]
+    if not text:
+        return p + ["empty"]
+    if not text.endswith("\n") or text.endswith("\n\n"):
+        p.append("must end with exactly one newline and contain no blank line")
+    names = []
+    for i, line in enumerate(text.rstrip("\n").split("\n"), 1):
+        m = _LOCK_LINE.match(line)
+        if not m:
+            p.append(f"line {i} {line!r} is not an exact `name==version` entry (ranges, comments, blank lines, URLs, editable installs are not allowed)")
+        else:
+            names.append(m.group(1))
+    low = [n.lower() for n in names]
+    if low != sorted(low):
+        p.append("entries are not sorted by lower-cased name (the order of `pip freeze`)")
+    norm = [re.sub(r"[-_.]+", "-", n.lower()) for n in names]
+    if len(set(norm)) != len(norm):
+        p.append("a package appears more than once")
+    for need in LOCK_REQUIRED_PACKAGES:
+        if need not in norm:
+            p.append(f"top-level dependency {need} is missing")
+    return p
+
+
+def check_dependency_lock(root: Path, manifest: dict) -> dict:
+    """Formal-mode stage 1: the frozen dependency snapshot is re-validated here (its hash was already compared with the manifest), not only trusted because the
+    freeze tooling once checked it.  Returns the evidence recorded in the provenance."""
+    f = root / manifest["dependency_lock_path"]
+    data = f.read_bytes()
+    problems = lock_format_problems(data)
+    if problems:
+        raise AnalysisError("E_MANIFEST", f"the dependency snapshot {manifest['dependency_lock_path']} is not a valid snapshot: {problems[0]}", path=manifest["dependency_lock_path"], actual=problems[:5])
+    return {"path": manifest["dependency_lock_path"], "sha256": hashlib.sha256(data).hexdigest(), "format_validated": True, "entries": len(data.decode("utf-8").splitlines())}
 
 
 def _hidden_git_problems(root: Path, prefixes=("python", "docs/prereg")) -> list[str]:
@@ -357,7 +408,9 @@ def validate_inputs(manifest_path: Path, input_root: Path, project_root: Path | 
             if not is_hex64(fill.get(field)) or fill.get(field) != manifest["frozen_files"].get(target):
                 raise AnalysisError("E_CONFIG_MISMATCH", f"to_fill_at_freeze.{field} does not equal the manifest hash of {target}", path=manifest["config_path"],
                                     json_path=f"$.to_fill_at_freeze.{field}", expected=manifest["frozen_files"].get(target), actual=fill.get(field))
+        lock = check_dependency_lock(root, manifest)
         protocol = check_protocol_evidence(root, manifest, frozen, seal, manifest["seal_path"])
+        protocol["dependency_lock"] = lock
     rels = ["config.json", "summary.json", "last/standard.json", "best/standard.json"] + (["last/hard.json"] if hard else [])
     required = {f"{n}/{rel}" for n in names for rel in rels}
     if set(seal["files"]) != required:
@@ -793,7 +846,8 @@ def build_report(ctx, ep, expl, prim, index_sha, res, devs):
            f"- failed attempts archived (seal): {len(ctx['seal']['attempts'])}; bootstrap index SHA-256 `{index_sha}`",
            *([f"- protocol evidence: code commit C `{ctx['protocol']['code_commit']}`, freeze commit F = HEAD `{ctx['protocol']['freeze_commit']}`, final-evaluation environment "
               f"`{ctx['protocol']['final_eval_environment']['path']}` (sha256 `{ctx['protocol']['final_eval_environment']['sha256']}`, machine `{ctx['protocol']['final_eval_environment']['machine_id']}`); "
-              f"checked: {'; '.join(ctx['protocol']['git_checks'])}"] if ctx["protocol"] else []),
+              f"checked: {'; '.join(ctx['protocol']['git_checks'])}; dependency snapshot `{ctx['protocol']['dependency_lock']['path']}` (sha256 `{ctx['protocol']['dependency_lock']['sha256']}`, "
+              f"{ctx['protocol']['dependency_lock']['entries']} pinned packages, format re-validated)"] if ctx["protocol"] else []),
            f"- deviations on record: {len(devs)}" + ("" if devs else " (none declared in the freeze manifest, none archived in the seal; the script does not infer deviations)")]
     out += [f"  - `{d['id']}` ({d['origin']}): {d['description']} [source: {d['source']}]" for d in devs]
     L = ep["last_standard"]

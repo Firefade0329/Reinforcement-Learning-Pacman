@@ -333,6 +333,8 @@ def test_the_analysis_numpy_file_cannot_pose_as_the_snapshot(repo):
 
 
 def test_snapshot_first_added_or_changed_in_f_is_refused(tmp_path, monkeypatch):
+    pins = dict(line.split("==") for line in GOOD.decode().split())  # this test's snapshot is GOOD: the environment "has" exactly those versions
+    monkeypatch.setattr(FB, "installed_version", lambda name: pins.get(name.lower()))
     r = Repo(tmp_path / "late")
     monkeypatch.setattr(PR, "MATRIX_FILE", r.root / "docs/prereg/matrix.csv")
     r.git("rm", "-q", LOCK_REL)  # the snapshot is NOT part of C ...

@@ -6,6 +6,9 @@ manifest generator on the manifest it is about to write.  Standard library only;
 generated or repaired.  Hashes are SHA-256 of the raw working-tree bytes (no newline normalisation, no BOM stripping).
 
 The manifest does not list itself (no self reference); its own hash is kept by the external freeze record.
+
+``binding_check`` (the formal entry points) also compares the dependency snapshot with the environment that is about to train / evaluate, package by
+package, through ``importlib.metadata`` (standard library); ``check_binding`` (also used by the manifest generator) stays a pure file check.
 """
 from __future__ import annotations
 
@@ -114,6 +117,36 @@ def lock_problems(data: bytes) -> list[str]:
     return p
 
 
+def installed_version(name: str) -> str | None:
+    """Version of the distribution ``name`` installed in THIS interpreter's environment (importlib.metadata normalises the name), None if absent."""
+    from importlib import metadata
+
+    try:
+        return metadata.version(name)
+    except metadata.PackageNotFoundError:
+        return None
+
+
+def lock_entries(data: bytes) -> list[tuple[str, str]]:
+    """The (name, version) pairs of a lock that already passed ``lock_problems``."""
+    return [tuple(line.split("==", 1)) for line in data.decode("utf-8").splitlines() if line]
+
+
+def environment_problems(data: bytes) -> tuple[list[str], int]:
+    """Compare every ``name==version`` of the dependency snapshot with the distribution actually installed in this environment.  A package that is
+    not installed, or installed in another version, is a problem that names the package.  Returns (problems, number of packages compared).
+    ``installed_version`` is looked up at call time (tests replace it); names are normalised by importlib.metadata."""
+    problems, n = [], 0
+    for name, want in lock_entries(data):
+        n += 1
+        have = installed_version(name)
+        if have is None:
+            problems.append(f"{name}=={want}: the package is in the dependency snapshot but not installed in this environment")
+        elif have != want:
+            problems.append(f"{name}: the snapshot pins {want} but this environment has {have}")
+    return problems, n
+
+
 def check_binding(root: Path, config, manifest, *, require_complete: bool = True) -> list[str]:
     """Problems of an already parsed (config, manifest) pair against the files under ``root``.  Empty list = bound."""
     root = Path(root)
@@ -187,6 +220,17 @@ def binding_check(root: Path) -> tuple[list[str], dict]:
     except (ValueError, OSError) as e:
         return [f"freeze material is not valid JSON: {e}"], {}
     problems = check_binding(root, config, manifest)
+    # the snapshot is not only well-formed: this environment must BE the one it describes (every package installed at the pinned version)
+    env_n, env_ok = None, False
+    lock_file = safe_relative(root, LOCK_REL)
+    if lock_file is not None and lock_file.is_file():
+        data = lock_file.read_bytes()
+        if not lock_problems(data):
+            env_problems, env_n = environment_problems(data)
+            env_ok = not env_problems
+            problems += [f"{LOCK_REL}: environment differs from the snapshot: {x}" for x in env_problems]
     evidence = {"checked_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "freeze_manifest_sha256": sha256_bytes_of(man_file),
-                "code_commit": manifest.get("code_commit"), "files_checked": len(manifest.get("frozen_files") or {}), "binding_passed": not problems}
+                "code_commit": manifest.get("code_commit"), "files_checked": len(manifest.get("frozen_files") or {}), "binding_passed": not problems,
+                "dependency_lock_sha256": sha256_bytes_of(lock_file) if lock_file is not None and lock_file.is_file() else None,
+                "environment_packages_compared": env_n, "environment_matches_lock": env_ok}
     return problems, evidence
