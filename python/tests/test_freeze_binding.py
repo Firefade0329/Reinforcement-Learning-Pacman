@@ -38,7 +38,7 @@ def results_for(repo, F):
     for row in ROWS:
         d = res / "runs" / row["run_name"]
         d.mkdir(parents=True, exist_ok=True)
-        (d / "run_complete.json").write_text(json.dumps({"freeze_commit": F, "code_commit": repo.C}))
+        (d / "run_complete.json").write_text(json.dumps({"freeze_commit": F, "code_commit": repo.C}), newline="\n")
     return res
 
 
@@ -112,14 +112,14 @@ def test_manifest_defects_are_refused(repo, entry, edit, message):
 def test_extra_frozen_file_drift_and_removal_are_refused(repo):
     # extra-frozen files are checked too, not only the main three.  The extra file is part of C (a code-side file), listed in the manifest at F
     repo2_root = repo.root
-    (repo2_root / "python/pacman_rl/extra_frozen.txt").write_text("extra\n")
+    (repo2_root / "python/pacman_rl/extra_frozen.txt").write_text("extra\n", newline="\n")
     repo.git("add", "-A")
     repo.git("commit", "-qm", "extra code-side file")
     repo.C = repo.git("rev-parse", "HEAD")
     repo.freeze()
     repo.amend_manifest(lambda m: m["frozen_files"].__setitem__("python/pacman_rl/extra_frozen.txt", sha_of(repo2_root / "python/pacman_rl/extra_frozen.txt")))
     train_entry(repo)  # intact: passes
-    (repo2_root / "python/pacman_rl/extra_frozen.txt").write_text("drifted\n")
+    (repo2_root / "python/pacman_rl/extra_frozen.txt").write_text("drifted\n", newline="\n")
     with pytest.raises(runner.Refused, match="extra_frozen.txt: the file's SHA-256 .* differs from the frozen"):
         train_entry(repo)
     (repo2_root / "python/pacman_rl/extra_frozen.txt").unlink()
@@ -207,7 +207,7 @@ def test_final_evaluation_refuses_before_any_permission_or_test_seed_read(repo, 
     monkeypatch.setattr(PR, "load_freeze", lambda path=None: repo.cfg)
     spies = Spies(monkeypatch)
     manifest = results / "m.json"
-    manifest.write_text("{}")
+    manifest.write_text("{}", newline="\n")
     with pytest.raises(runner.Refused, match="differs from the frozen"):
         runner.final_eval(manifest, results, repo.root / ANALYSIS_REL, unseal=True, rows=ROWS, freeze=repo.cfg, root=repo.root)
     assert spies.started() == {}  # no unseal permission issued, no sealed partition read, no evaluation, no environment evidence
@@ -235,7 +235,7 @@ def test_generator_works_without_an_existing_manifest_and_its_output_passes_the_
     prepare(r)  # no freeze_manifest.json anywhere
     assert not (r.root / MAN_REL).exists()
     man = generate(r)
-    (r.root / MAN_REL).write_text(json.dumps(man, indent=1, sort_keys=True))
+    (r.root / MAN_REL).write_text(json.dumps(man, indent=1, sort_keys=True), newline="\n")
     problems, ev = FB.binding_check(r.root)
     assert problems == [] and ev["binding_passed"] is True and man["frozen_files"][CFG_REL] == sha_of(r.root / CFG_REL)
 
@@ -261,7 +261,7 @@ def test_generator_refuses_a_frozen_path_that_has_no_text_rule(tmp_path, monkeyp
     r = Repo(tmp_path / "g")
     monkeypatch.setattr(PR, "MATRIX_FILE", r.root / "docs/prereg/matrix.csv")
     (r.root / "tools").mkdir()
-    (r.root / "tools" / "extra.txt").write_text("outside every -text rule\n")
+    (r.root / "tools" / "extra.txt").write_text("outside every -text rule\n", newline="\n")
     r.git("add", "-A")
     r.git("commit", "-qm", "extra")
     r.C = r.git("rev-parse", "HEAD")

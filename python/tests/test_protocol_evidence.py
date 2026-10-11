@@ -27,7 +27,7 @@ def state(tmp_path, monkeypatch):
     for row in ROWS:
         d = res / "runs" / row["run_name"]
         d.mkdir(parents=True)
-        (d / "run_complete.json").write_text(json.dumps({"freeze_commit": F, "code_commit": r.C}))
+        (d / "run_complete.json").write_text(json.dumps({"freeze_commit": F, "code_commit": r.C}), newline="\n")
     ev = runner.final_eval_preflight(r.cfg, res, ROWS, root=r.root)
     runner.save_final_eval_environment(res, r.cfg, ev, root=r.root)
     return r, res, F
@@ -41,7 +41,7 @@ def edit_env(res, fn):
     f = res / "final_eval_environment.json"
     d = json.loads(f.read_text())
     fn(d)
-    f.write_text(json.dumps(d, indent=1))
+    f.write_text(json.dumps(d, indent=1), newline="\n")
 
 
 def test_environment_file_carries_the_anonymous_machine_id_and_keeps_its_old_fields(state):
@@ -99,17 +99,17 @@ def test_missing_environment_file_is_refused(state):
 
 def test_a_run_with_another_c_or_f_is_refused(state):
     r, res, F = state
-    (res / "runs" / ROWS[1]["run_name"] / "run_complete.json").write_text(json.dumps({"freeze_commit": "e" * 40, "code_commit": r.C}))
+    (res / "runs" / ROWS[1]["run_name"] / "run_complete.json").write_text(json.dumps({"freeze_commit": "e" * 40, "code_commit": r.C}), newline="\n")
     with pytest.raises(runner.Refused, match="do not all record code commit C"):
         produce(r, res)
 
 
 def test_head_moved_or_dirty_tracked_file_or_material_drift_is_refused(state):
     r, res, F = state
-    (r.root / "python/pacman_rl/m.py").write_text("x = 99\n")
+    (r.root / "python/pacman_rl/m.py").write_text("x = 99\n", newline="\n")
     with pytest.raises(runner.Refused, match="uncommitted changes"):
         produce(r, res)
-    (r.root / "python/pacman_rl/m.py").write_text("x = 1\n")
+    (r.root / "python/pacman_rl/m.py").write_text("x = 1\n", newline="\n")
     produce(r, res)
     r.commit_file("docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md", "edited later\n")  # HEAD is no longer F and the frozen text drifted
     with pytest.raises(runner.Refused, match="differs from the frozen|freeze commit F"):
@@ -123,7 +123,7 @@ def test_the_seal_carries_protocol_evidence_at_top_level_only_and_the_core_files
     captured = {}
     monkeypatch.setattr(seal, "build_evaluation_seal", lambda *a, protocol_evidence=None, **k: captured.update(ev=protocol_evidence) or {"x": 1})
     fm = res / "fm.json"
-    fm.write_text("{}")
+    fm.write_text("{}", newline="\n")
     runner.make_evaluation_seal(res, res / "m.json", fm, rows=ROWS, freeze=r.cfg, root=r.root)
     assert captured["ev"] == ev and (res / "evaluation_seal.json").is_file()
 
@@ -132,7 +132,7 @@ def test_the_formal_seal_is_refused_when_the_evidence_is_wrong_and_nothing_is_wr
     r, res, F = state
     edit_env(res, lambda d: d.update(machine_id="other-machine"))
     fm = res / "fm.json"
-    fm.write_text("{}")
+    fm.write_text("{}", newline="\n")
     with pytest.raises(runner.Refused, match="machine_id"):
         runner.make_evaluation_seal(res, res / "m.json", fm, rows=ROWS, freeze=r.cfg, root=r.root)
     assert not (res / "evaluation_seal.json").exists()
@@ -149,13 +149,13 @@ def study_for_seal(tmp_path_factory):
     results = tmp_path_factory.mktemp("seal_study")
     assert set(runner.run_matrix(TS.ROWS, TS.FREEZE, results, 1, TS.TINY).values()) == {"done"}
     script = results / "analysis.py"
-    script.write_text("# placeholder\n")
+    script.write_text("# placeholder\n", newline="\n")
     mp.setattr(TS.ev, "SEED_SETS", {**TS.ev.SEED_SETS, "prereg_test": list(range(50000, 50005))})
     pre = results / "m.json"
     seal.write_manifest(pre, TS.build(results, script))
     TS.final(results, script, unseal=True)
     fm = results / "fm.json"
-    fm.write_text("{}")
+    fm.write_text("{}", newline="\n")
     yield results, TS.ROWS, TS.FREEZE, pre, fm
     mp.undo()
 

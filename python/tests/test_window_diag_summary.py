@@ -51,7 +51,7 @@ class FrozenRepo:
         for rel in S.CODE_FILES:
             (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy(REPO / rel, self.root / rel)
-        (self.root / ".gitignore").write_text("results_prereg/\n")
+        (self.root / ".gitignore").write_text("results_prereg/\n", newline="\n")
         (self.root / "docs" / "prereg").mkdir(parents=True)
         self.git("init", "-q")
         self.C = self.commit("C")
@@ -72,7 +72,7 @@ class FrozenRepo:
         m = {"schema_version": "prereg-freeze-1", "synthetic": False, "complete": True, "spec_version": "0.3.2", "code_commit": self.C,
              "frozen_files": {rel: S.sha256_file(self.root / rel) for rel in S.CODE_FILES}}
         m.update(over)
-        (self.root / "docs/prereg/freeze_manifest.json").write_text(json.dumps(m, indent=1, sort_keys=True))
+        (self.root / "docs/prereg/freeze_manifest.json").write_text(json.dumps(m, indent=1, sort_keys=True), newline="\n")
 
     def context(self, F=None):
         return S.freeze_context(self.manifest, self.root, F or self.F)
@@ -85,7 +85,7 @@ def make_results(root: Path, F, mutate=None):
         doc = synthetic_doc(r, F)
         if mutate:
             mutate(r, doc)
-        (d / S.DIAG).write_text(json.dumps(doc), encoding="utf-8")
+        (d / S.DIAG).write_text(json.dumps(doc), encoding="utf-8", newline="\n")
     return root
 
 
@@ -196,7 +196,7 @@ def test_a_non_finite_or_overflowing_number_anywhere_in_a_record_is_refused(froz
     for literal in ("NaN", "Infinity", "1e999"):
         root = make_results(tmp_path / f"x{len(literal)}", repo.F)
         f = root / "runs" / ROWS[4]["run_name"] / S.DIAG
-        f.write_text(f.read_text().replace('"descriptive_only": true', f'"descriptive_only": true, "extra_value": {literal}', 1))
+        f.write_text(f.read_text().replace('"descriptive_only": true', f'"descriptive_only": true, "extra_value": {literal}', 1), newline="\n")
         with pytest.raises(S.DiagError, match="non-finite|unreadable"):
             S.build_seal(root, ROWS, freeze, BUDGET)
 
@@ -209,7 +209,7 @@ def test_summary_refuses_a_record_changed_after_sealing(frozen, tmp_path):
     f = root / "runs" / ROWS[0]["run_name"] / S.DIAG
     doc = json.loads(f.read_text())
     doc["pending_total"] += 1
-    f.write_text(json.dumps(doc))
+    f.write_text(json.dumps(doc), newline="\n")
     with pytest.raises(S.DiagError, match="differs from the sealed hash"):
         S.summarize(root, seal, ROWS, freeze, BUDGET)
     seal2 = dict(seal, files={k: v for k, v in list(seal["files"].items())[:-1]})
@@ -240,12 +240,12 @@ def test_wrong_external_f_or_a_moved_head_is_refused(tmp_path):
 
 def test_dirty_tree_changed_code_or_non_permitted_f_files_are_refused(tmp_path):
     repo = fresh_repo(tmp_path)
-    (repo.root / ".gitignore").write_text("results_prereg/\n# dirty\n")
+    (repo.root / ".gitignore").write_text("results_prereg/\n# dirty\n", newline="\n")
     with pytest.raises(S.DiagError, match="uncommitted changes"):
         repo.context()
-    (repo.root / ".gitignore").write_text("results_prereg/\n")
+    (repo.root / ".gitignore").write_text("results_prereg/\n", newline="\n")
     code = repo.root / S.CODE_FILES[0]
-    code.write_text(code.read_text() + "\n# changed after the freeze\n")
+    code.write_text(code.read_text() + "\n# changed after the freeze\n", newline="\n")
     with pytest.raises(S.DiagError, match="differs from the frozen hash"):
         repo.context()
 
@@ -272,7 +272,7 @@ def test_c_that_is_not_an_ancestor_or_f_with_a_changed_python_tree_is_refused(tm
         repo.context()
     repo2 = FrozenRepo(tmp_path / "fr2")
     (repo2.root / "python" / "other.py").parent.mkdir(exist_ok=True)
-    (repo2.root / "python" / "other.py").write_text("x = 1\n")
+    (repo2.root / "python" / "other.py").write_text("x = 1\n", newline="\n")
     repo2.F = repo2.commit("python changed in F")
     with pytest.raises(S.DiagError, match="python/ tree"):
         repo2.context()
@@ -388,8 +388,8 @@ def test_core_analysis_output_is_identical_with_and_without_the_window_sidecar(f
 
     plain, with_side = build(tmp_path / "plain"), build(tmp_path / "side")
     for r in ROWS:  # records next to the runs, a seal next to the evaluation seal
-        (with_side.runs / r["run_name"] / S.DIAG).write_text((fresults / "runs" / r["run_name"] / S.DIAG).read_text(), encoding="utf-8")
-    (with_side.root / "results_prereg" / "window_diagnostics_seal.json").write_text(json.dumps(S.build_seal(fresults, ROWS, freeze, BUDGET)))
+        (with_side.runs / r["run_name"] / S.DIAG).write_text((fresults / "runs" / r["run_name"] / S.DIAG).read_text(), encoding="utf-8", newline="\n")
+    (with_side.root / "results_prereg" / "window_diagnostics_seal.json").write_text(json.dumps(S.build_seal(fresults, ROWS, freeze, BUDGET)), newline="\n")
     out_a, out_b = tmp_path / "out_a", tmp_path / "out_b"
     A.analyze(plain.manifest, plain.runs, out_a, "synthetic")
     A.analyze(with_side.manifest, with_side.runs, out_b, "synthetic")

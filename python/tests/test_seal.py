@@ -34,7 +34,7 @@ def study(tmp_path_factory, declared_hard_flag):
     results = tmp_path_factory.mktemp("study")
     assert set(runner.run_matrix(ROWS, FREEZE, results, 1, TINY).values()) == {"done"}
     script = results / "analysis.py"
-    script.write_text("# placeholder analysis script\n")
+    script.write_text("# placeholder analysis script\n", newline="\n")
     return results, script
 
 
@@ -122,8 +122,8 @@ def test_tampered_checkpoint_is_detected_before_and_after_the_manifest(fresh, st
 
 
 def test_stray_test_output_or_failure_marker_blocks(fresh):
-    _damage_and_expect(fresh, lambda r: (r / "runs" / "prereg_cnn2_n1_s100" / "test_standard.json").write_text("{}"), "forbidden files", after_manifest=False)
-    _damage_and_expect(fresh, lambda r: (r / "runs" / "prereg_cnn2_n1_s100" / "failure.json").write_text("{}"), "failure.json", after_manifest=False)
+    _damage_and_expect(fresh, lambda r: (r / "runs" / "prereg_cnn2_n1_s100" / "test_standard.json").write_text("{}", newline="\n"), "forbidden files", after_manifest=False)
+    _damage_and_expect(fresh, lambda r: (r / "runs" / "prereg_cnn2_n1_s100" / "failure.json").write_text("{}", newline="\n"), "failure.json", after_manifest=False)
 
 
 def test_edited_run_record_and_configuration_drift_block(fresh):
@@ -131,7 +131,7 @@ def test_edited_run_record_and_configuration_drift_block(fresh):
         f = results / "runs" / "prereg_cnn2_n1_s100" / "run_complete.json"
         d = json.loads(f.read_text())
         d["config"]["lr"] = 0.001
-        f.write_text(json.dumps(d))
+        f.write_text(json.dumps(d), newline="\n")
 
     _damage_and_expect(fresh, edit, "recorded configuration differs", after_manifest=False)
 
@@ -141,7 +141,7 @@ def test_different_initial_weights_for_n1_and_n3_block(fresh):
         f = results / "runs" / "prereg_cnn2_n3_s100" / "run_complete.json"
         d = json.loads(f.read_text())
         d["init_online_hash"] = "0" * 64
-        f.write_text(json.dumps(d))
+        f.write_text(json.dumps(d), newline="\n")
 
     _damage_and_expect(fresh, edit, "same initial weights", after_manifest=False)
 
@@ -151,13 +151,13 @@ def test_mixed_code_or_environment_block(fresh):
         f = results / "runs" / "prereg_cnn2_n3_s100" / "run_complete.json"
         d = json.loads(f.read_text())
         d["code_version"]["python_tree_sha256"] = "x"
-        f.write_text(json.dumps(d))
+        f.write_text(json.dumps(d), newline="\n")
 
     def edit_env(results):
         f = results / "runs" / "prereg_cnn2_n3_s100" / "run_complete.json"
         d = json.loads(f.read_text())
         d["environment"]["torch"] = "0.0.0"
-        f.write_text(json.dumps(d))
+        f.write_text(json.dumps(d), newline="\n")
 
     _damage_and_expect(fresh, edit_code, "different code versions", after_manifest=False)
     _damage_and_expect(fresh, edit_env, "different software/GPU environments", after_manifest=False)
@@ -173,7 +173,7 @@ def test_analysis_script_change_after_the_manifest_blocks(fresh):
     results, script = fresh
     m = results / "m.json"
     seal.write_manifest(m, build(results, script))
-    script.write_text("# changed after sealing\n")
+    script.write_text("# changed after sealing\n", newline="\n")
     with pytest.raises(seal.ManifestError, match="analysis script differs"):
         verify(results, script, m)
 
@@ -182,7 +182,7 @@ def test_missing_manifest_blocks(fresh):
     results, script = fresh
     with pytest.raises(seal.ManifestError, match="not found"):
         verify(results, script, results / "nope.json")
-    (results / "bad.json").write_text(json.dumps({"version": 1, "complete": False}))
+    (results / "bad.json").write_text(json.dumps({"version": 1, "complete": False}), newline="\n")
     with pytest.raises(seal.ManifestError, match="not a complete"):
         verify(results, script, results / "bad.json")
 
@@ -261,7 +261,7 @@ def test_identical_best_and_last_are_evaluated_once_and_say_so(fresh):
     shutil.copy(run / "last.pt", run / "best.pt")  # make best identical to last, then re-record the run (a unit-level setup)
     d = json.loads((run / "run_complete.json").read_text())
     d["best_file_sha256"], d["best_state_sha256"] = d["last_file_sha256"], d["last_state_sha256"]
-    (run / "run_complete.json").write_text(json.dumps(d))
+    (run / "run_complete.json").write_text(json.dumps(d), newline="\n")
     written = runner.final_eval_run(results, name, seal.UnsealToken(seal._ISSUE_KEY, "t"), FREEZE)
     best = json.loads((run / "best" / "standard.json").read_text())
     last = json.loads((run / "last" / "standard.json").read_text())
@@ -291,7 +291,7 @@ def test_evaluation_seal_hashes_every_file_the_analysis_reads(fresh):
     results, script = fresh
     final(results, script, unseal=True)
     fm = results / "freeze_manifest.json"
-    fm.write_text("{}")
+    fm.write_text("{}", newline="\n")
     out = runner.make_evaluation_seal(results, results / "m.json", fm, rows=ROWS, freeze=FREEZE, allow_unfrozen=True)
     obj = json.loads((results / "evaluation_seal.json").read_text())
     assert obj["schema_version"] == "prereg-seal-1" and obj["synthetic"] is False and obj["all_training_complete"] is True
@@ -311,13 +311,13 @@ def test_evaluation_seal_refuses_missing_files_changed_checkpoints_and_undeclare
     results, script = fresh
     final(results, script, unseal=True)
     fm = results / "fm.json"
-    fm.write_text("{}")
+    fm.write_text("{}", newline="\n")
     run = results / "runs" / ROWS[0]["run_name"]
     (run / "best" / "standard.json").rename(run / "best" / "standard.json.moved")
     with pytest.raises(seal.ManifestError, match="required file best/standard.json missing"):
         seal.build_evaluation_seal(results, ROWS, FREEZE, results / "m.json", fm)
     (run / "best" / "standard.json.moved").rename(run / "best" / "standard.json")
-    (run / "last" / "hard.json").write_text("{}")
+    (run / "last" / "hard.json").write_text("{}", newline="\n")
     with pytest.raises(seal.ManifestError, match="hard_enabled is false"):
         seal.build_evaluation_seal(results, ROWS, FREEZE, results / "m.json", fm)
     (run / "last" / "hard.json").unlink()
@@ -345,7 +345,7 @@ def test_frozen_mode_requires_the_frozen_code_commit_and_one_freeze_commit(fresh
     run = results / "runs" / ROWS[0]["run_name"]
     d = json.loads((run / "run_complete.json").read_text())
     d["freeze_commit"] = "e" * 40
-    (run / "run_complete.json").write_text(json.dumps(d))
+    (run / "run_complete.json").write_text(json.dumps(d), newline="\n")
     problems, _ = seal.run_problems(results, ROWS, FREEZE, allow_unfrozen=True, tiny_overrides=TINY)
     assert any("different code versions" in p for p in problems)
 
@@ -358,26 +358,26 @@ def _drop_summary(run):
 def _budget_drift(run):
     d = json.loads((run / "summary.json").read_text())
     d["total_env_steps"] = 120000
-    (run / "summary.json").write_text(json.dumps(d))
+    (run / "summary.json").write_text(json.dumps(d), newline="\n")
 
 
 def _duplicate_validation(run):
     d = json.loads((run / "summary.json").read_text())
     d["validation_steps"].append(d["validation_steps"][-1])
-    (run / "summary.json").write_text(json.dumps(d))
+    (run / "summary.json").write_text(json.dumps(d), newline="\n")
 
 
 def _best_step_changed(run):
     d = json.loads((run / "summary.json").read_text())
     other = [s for s in d["validation_steps"] if s != d["checkpoints"]["best"]["step"]][0]
     d["checkpoints"]["best"]["step"] = other
-    (run / "summary.json").write_text(json.dumps(d))
+    (run / "summary.json").write_text(json.dumps(d), newline="\n")
 
 
 def _log_duplicated(run):
     lines = (run / "train_log.jsonl").read_text().splitlines()
     ev = [x for x in lines if '"eval"' in x][-1]
-    (run / "train_log.jsonl").write_text("\n".join(lines + [ev]) + "\n")
+    (run / "train_log.jsonl").write_text("\n".join(lines + [ev]) + "\n", newline="\n")
 
 
 CASES = [(_drop_summary, "summary.json is missing"), (_budget_drift, "budget"), (_duplicate_validation, "validation_steps"),
@@ -412,10 +412,10 @@ def test_final_evaluation_takes_the_best_step_from_the_current_summary_file(fres
     shutil.copy(run / "last.pt", run / "best.pt")
     d = json.loads((run / "run_complete.json").read_text())
     d["best_file_sha256"], d["best_state_sha256"] = d["last_file_sha256"], d["last_state_sha256"]
-    (run / "run_complete.json").write_text(json.dumps(d))
+    (run / "run_complete.json").write_text(json.dumps(d), newline="\n")
     s = json.loads((run / "summary.json").read_text())
     s["checkpoints"]["best"]["step"] = 48
-    (run / "summary.json").write_text(json.dumps(s))  # the file, not the cached copy, is authoritative
+    (run / "summary.json").write_text(json.dumps(s), newline="\n")  # the file, not the cached copy, is authoritative
     runner.final_eval_run(results, name, seal.UnsealToken(seal._ISSUE_KEY, "t"), FREEZE)
     assert json.loads((run / "best" / "standard.json").read_text())["meta"]["checkpoint_step"] == 48
 
@@ -439,7 +439,7 @@ def study_diag(tmp_path_factory, declared_hard_flag):
     results = tmp_path_factory.mktemp("study_diag")
     assert set(runner.run_matrix(ROWS, FREEZE, results, 1, TINY, diagnostics=True).values()) == {"done"}
     script = results / "analysis.py"
-    script.write_text("# placeholder analysis script\n")
+    script.write_text("# placeholder analysis script\n", newline="\n")
     return results, script
 
 
@@ -466,7 +466,7 @@ def test_adding_or_removing_the_record_after_the_fact_does_not_change_the_manife
     results, script = fresh
     before = build(results, script)["runs"]
     for r in ROWS:
-        (results / "runs" / r["run_name"] / "window_diagnostics.json").write_text("{}")
-        (results / "runs" / r["run_name"] / "window_diagnostics.partial.json").write_text("{}")
+        (results / "runs" / r["run_name"] / "window_diagnostics.json").write_text("{}", newline="\n")
+        (results / "runs" / r["run_name"] / "window_diagnostics.partial.json").write_text("{}", newline="\n")
     assert build(results, script)["runs"] == before
     assert seal.run_problems(results, ROWS, FREEZE, allow_unfrozen=True, tiny_overrides=TINY)[0] == []

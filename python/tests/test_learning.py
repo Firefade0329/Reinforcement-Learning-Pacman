@@ -280,7 +280,7 @@ def test_stale_lock_is_taken_over(tmp_path, monkeypatch):
     run = tmp_path / "r"
     run.mkdir()
     assert mod.take_lock(run) and not mod.take_lock(run)  # held by this (alive) process
-    (run / ".lock" / "pid").write_text("999999999")      # owner that does not exist
+    (run / ".lock" / "pid").write_text("999999999", newline="\n")      # owner that does not exist
     assert mod.take_lock(run)                              # stale -> taken over
 
 
@@ -337,7 +337,7 @@ def _edit_json(path, fn):
 
     d = json.loads(path.read_text())
     fn(d)
-    path.write_text(json.dumps(d))
+    path.write_text(json.dumps(d), newline="\n")
 
 
 def test_matrix_validation_passes_on_committed_results():
@@ -357,7 +357,7 @@ def test_matrix_validation_catches_config_name_mismatch_and_short_evaluation(tmp
 
 def test_matrix_validation_catches_empty_summary(tmp_path, monkeypatch):
     lib, run, mine = _damaged_copy(tmp_path, monkeypatch)
-    (run / "summary.json").write_text("{}")
+    (run / "summary.json").write_text("{}", newline="\n")
     assert any("summary.json lacks finite" in x for x in mine()), mine()
 
 
@@ -505,7 +505,7 @@ def test_resume_truncates_the_interrupted_segment_and_marks_it(tmp_path):
     p = tmp_path / "unit.jsonl"
     rows = [{"type": "eval", "env_steps": 20000}, {"type": "train", "env_steps": 20000},
             {"type": "train", "env_steps": 24000}, {"type": "train", "env_steps": 28000}]
-    p.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    p.write_text("".join(json.dumps(r) + "\n" for r in rows), newline="\n")
     assert truncate_log_to(p, 20000) == (2, 0)
     assert not list(tmp_path.glob("*.bak*"))  # nothing was wrong with the tail: no backup
     assert [json.loads(x)["env_steps"] for x in p.read_text().splitlines()] == [20000, 20000]
@@ -515,7 +515,7 @@ def test_resume_truncates_the_interrupted_segment_and_marks_it(tmp_path):
                       batch=8, seed=2)
     run = tmp_path / "run"
     train(cfg, run, log=lambda *_: None, _stop_after=320)
-    with open(run / "train_log.jsonl", "a") as f:
+    with open(run / "train_log.jsonl", "a", newline="\n") as f:
         f.write(json.dumps({"type": "train", "env_steps": 400, "score": 1.0}) + "\n")  # from the interrupted segment
     train(cfg, run, log=lambda *_: None)
     rows = [json.loads(x) for x in (run / "train_log.jsonl").read_text().splitlines()]
@@ -534,12 +534,12 @@ def test_truncate_log_discards_only_an_unfinished_last_line_and_keeps_a_backup(t
     p = tmp_path / "train_log.jsonl"
     good = [{"type": "eval", "env_steps": 160}, {"type": "train", "env_steps": 200}]
     original = "".join(json.dumps(r) + "\n" for r in good) + '{"type": "train", "env_steps": 12000, "sco'
-    p.write_text(original)
+    p.write_text(original, newline="\n")
     assert truncate_log_to(p, 160) == (1, 1)  # one complete row after the checkpoint, one unfinished line
     assert [json.loads(x) for x in p.read_text().splitlines()] == good[:1]
     bak = tmp_path / "train_log.jsonl.partial-tail.bak"
     assert bak.read_text() == original  # the untouched original, partial line included
-    p.write_text(original)  # a second incident must not overwrite the first backup
+    p.write_text(original, newline="\n")  # a second incident must not overwrite the first backup
     assert truncate_log_to(p, 160) == (1, 1)
     assert bak.read_text() == original and (tmp_path / "train_log.jsonl.partial-tail.bak.2").read_text() == original
 
@@ -552,7 +552,7 @@ def test_resume_survives_a_half_written_last_log_line(tmp_path):
 
     cfg = TrainConfig(arch="mlp", total_env_steps=640, learn_start=64, eval_every=160, n_envs=4, buffer=2000, batch=8, seed=1)
     train(cfg, tmp_path, log=lambda *_: None, _stop_after=320)
-    with open(tmp_path / "train_log.jsonl", "a") as f:
+    with open(tmp_path / "train_log.jsonl", "a", newline="\n") as f:
         f.write('{"type": "train", "env_steps": 12000, "sco')
     before = (tmp_path / "train_log.jsonl").read_text()
     train(cfg, tmp_path, log=lambda *_: None)
@@ -572,7 +572,7 @@ def test_resume_refuses_a_corrupt_line_in_the_middle_of_the_log(tmp_path):
     lines = log.read_text().splitlines()
     assert len(lines) >= 2
     lines[0] = lines[0][:20]  # damage a row that is NOT the last one
-    log.write_text("\n".join(lines) + "\n")
+    log.write_text("\n".join(lines) + "\n", newline="\n")
     damaged = log.read_text()
     with pytest.raises(ValueError, match=r"train_log\.jsonl: line 1 is not valid JSON"):
         train(cfg, tmp_path, log=lambda *_: None)

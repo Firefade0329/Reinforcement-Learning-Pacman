@@ -80,7 +80,7 @@ def test_protocol_evidence_c_that_differs_from_the_manifest_c_is_refused(tmp_pat
 
 def test_f_that_changes_python_is_refused(tmp_path):
     def pre(st):
-        (st.root / "python/pacman_rl/window_diag.py").write_text("# changed in the freeze commit\n")  # frozen hash follows, so only the relation fails
+        (st.root / "python/pacman_rl/window_diag.py").write_text("# changed in the freeze commit\n", newline="\n")  # frozen hash follows, so only the relation fails
 
     obj = refuse(tmp_path, formal(tmp_path, pre_f=pre), "E_MANIFEST")
     assert "python/ tree" in obj["message"]
@@ -96,7 +96,7 @@ def test_f_that_changes_the_matrix_is_refused(tmp_path):
 
 def test_f_with_a_non_permitted_file_is_refused(tmp_path):
     def pre(st):
-        (st.root / "docs" / "README.md").write_text("a note added in the freeze commit\n")
+        (st.root / "docs" / "README.md").write_text("a note added in the freeze commit\n", newline="\n")
 
     obj = refuse(tmp_path, formal(tmp_path, pre_f=pre), "E_MANIFEST")
     assert "six freeze-material files" in obj["message"]
@@ -111,7 +111,7 @@ def test_head_that_is_not_the_sealed_f_is_refused(tmp_path):
 
 def test_a_dirty_tracked_file_is_refused(tmp_path):
     st = formal(tmp_path)
-    (st.root / ".gitignore").write_text("results_prereg/\n# edited\n")
+    (st.root / ".gitignore").write_text("results_prereg/\n# edited\n", newline="\n")
     obj = refuse(tmp_path, st, "E_MANIFEST")
     assert "uncommitted" in obj["message"]
 
@@ -234,3 +234,4 @@ def test_the_analysis_script_does_not_import_the_training_package():
     out = subprocess.run([sys.executable, "-c", "import sys; sys.path.insert(0, %r); import prereg_analysis; print('torch' in sys.modules)" % str(Path(A.__file__).parent)],
                          capture_output=True, text=True).stdout.strip()
     assert out == "False"
+

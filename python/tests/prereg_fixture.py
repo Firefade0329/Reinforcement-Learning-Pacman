@@ -19,7 +19,7 @@ def sha(path) -> str:
 
 def write_json(path, obj):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(obj, indent=1), encoding="utf-8")
+    path.write_text(json.dumps(obj, indent=1), encoding="utf-8", newline="\n")
 
 
 def matrix_rows():
@@ -97,14 +97,14 @@ class Study:
         """Files that belong to the CODE commit C of a formal study (the analysis script, the snapshot, the diagnostic code, .gitattributes, the matrix)."""
         self.prereg.mkdir(parents=True, exist_ok=True)
         shutil.copy(REPO / "docs" / "prereg" / "matrix.csv", self.prereg / "matrix.csv")
-        (self.prereg / "analysis.py").write_text((REPO / "python" / "scripts" / "prereg_analysis.py").read_text(), encoding="utf-8")
-        (self.prereg / "dependency_lock.txt").write_text("matplotlib==0.0.0\nnumpy==0.0.0\npytest==0.0.0\ntorch==0.0.0\n")  # clearly fake pins
+        (self.prereg / "analysis.py").write_bytes((REPO / "python" / "scripts" / "prereg_analysis.py").read_bytes())  # bytes: the copy is hashed
+        (self.prereg / "dependency_lock.txt").write_text("matplotlib==0.0.0\nnumpy==0.0.0\npytest==0.0.0\ntorch==0.0.0\n", newline="\n")  # clearly fake pins
         shutil.copy(REPO / ".gitattributes", self.root / ".gitattributes")
-        (self.root / ".gitignore").write_text("results_prereg/\n")  # the results are never part of C or F
+        (self.root / ".gitignore").write_text("results_prereg/\n", newline="\n")  # the results are never part of C or F
         for rel, text in (("python/pacman_rl/window_diag.py", "# fake diagnostic definition\n"), ("python/scripts/window_diagnostics_summary.py", "# fake diagnostic summary\n"),
                           ("python/scripts/prereg_analysis.requirements.txt", "numpy==0.0.0\n")):
             (self.root / rel).parent.mkdir(parents=True, exist_ok=True)
-            (self.root / rel).write_text(text)
+            (self.root / rel).write_text(text, newline="\n")
 
     def env_record(self, F):
         return {"utc": "2000-01-01T00:00:00Z", "machine_id": "synthetic", "evaluation_device": "cpu",
@@ -126,17 +126,17 @@ class Study:
                 self.git("checkout", "-q", main)
         else:
             shutil.copy(REPO / "docs" / "prereg" / "matrix.csv", self.prereg / "matrix.csv")
-            (self.prereg / "analysis.py").write_text((REPO / "python" / "scripts" / "prereg_analysis.py").read_text(), encoding="utf-8")
-            (self.prereg / "requirements.lock").write_text("numpy==2.5.3\n")
+            (self.prereg / "analysis.py").write_bytes((REPO / "python" / "scripts" / "prereg_analysis.py").read_bytes())  # bytes: the copy is hashed
+            (self.prereg / "requirements.lock").write_text("numpy==2.5.3\n", newline="\n")
         frozen = json.loads((REPO / "docs" / "prereg" / "frozen_config_v0.3.2.json").read_text())
         frozen.update(status="frozen" if self.formal else "synthetic", code_commit=self.commit, machine_id="synthetic", worker_count=2, hard_enabled=self.hard)
         self.frozen = frozen
         for name, text in (("PREREG_ARCH_NSTEP_v0.3.2.md", "SYNTHETIC FAKE preregistration text (test fixture)\n"),
                            ("ANALYSIS_SPEC_v0.3.2.md", "SYNTHETIC FAKE analysis specification text (test fixture)\n")):
-            (self.prereg / name).write_text(text)
+            (self.prereg / name).write_text(text, newline="\n")
         if self.formal:
-            (self.prereg / "CLAUDE_HANDOFF_v0.3.2.md").write_text("SYNTHETIC FAKE hand-over text (test fixture)\n")
-            (self.prereg / "FREEZE_CHECKLIST.md").write_text("SYNTHETIC FAKE checklist (test fixture)\n")
+            (self.prereg / "CLAUDE_HANDOFF_v0.3.2.md").write_text("SYNTHETIC FAKE hand-over text (test fixture)\n", newline="\n")
+            (self.prereg / "FREEZE_CHECKLIST.md").write_text("SYNTHETIC FAKE checklist (test fixture)\n", newline="\n")
             lock_rel = "dependency_lock.txt"
         else:
             lock_rel = "requirements.lock"
@@ -249,6 +249,6 @@ class Study:
         p = self.path(run, rel)
         d = json.loads(p.read_text())
         fn(d)
-        p.write_text(json.dumps(d, indent=1))
+        p.write_text(json.dumps(d, indent=1), newline="\n")
         if reseal:
             self.reseal()

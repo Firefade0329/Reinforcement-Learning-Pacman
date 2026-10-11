@@ -130,16 +130,16 @@ def _git(cwd, *a):
 
 def test_code_version_tracks_sha_dirtiness_and_tree_contents(tmp_path):
     (tmp_path / "python").mkdir()
-    (tmp_path / "python" / "m.py").write_text("x = 1\n")
+    (tmp_path / "python" / "m.py").write_text("x = 1\n", newline="\n")
     (tmp_path / "docs").mkdir()
-    (tmp_path / "docs" / "matrix.csv").write_text("a,b\n")
+    (tmp_path / "docs" / "matrix.csv").write_text("a,b\n", newline="\n")
     _git(tmp_path, "init", "-q")
     _git(tmp_path, "add", "-A")
     _git(tmp_path, "commit", "-qm", "c")
     v = P.code_version(tmp_path, {"docs/matrix.csv": "", "docs/missing.json": ""})
     assert len(v["git_sha"]) == 40 and v["git_dirty"] is False and v["git_diff_sha256"] is None
     assert v["files"]["docs/matrix.csv"] == P.file_sha256(tmp_path / "docs" / "matrix.csv") and v["files"]["docs/missing.json"] is None
-    (tmp_path / "python" / "m.py").write_text("x = 2\n")
+    (tmp_path / "python" / "m.py").write_text("x = 2\n", newline="\n")
     d = P.code_version(tmp_path)
     assert d["git_sha"] == v["git_sha"] and d["git_dirty"] is True and d["git_diff_sha256"]
     assert d["python_tree_sha256"] != v["python_tree_sha256"]  # contents, not just the commit

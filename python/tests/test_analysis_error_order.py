@@ -65,7 +65,7 @@ def test_non_finite_score_is_rejected_at_parsing_before_any_field_check(study, t
     text = p.read_text()
     first = text.index('"score": ')
     end = text.index(",", first)
-    p.write_text(text[:first] + f'"score": {literal}' + text[end:])
+    p.write_text(text[:first] + f'"score": {literal}' + text[end:], newline="\n")
     study.reseal()
     o = code_of(tmp_path, study)
     assert o["code"] == "E_NONFINITE"
@@ -114,7 +114,7 @@ def test_a_non_finite_number_in_a_later_run_beats_a_score_error_in_the_first_run
     p = study.path(R2, "best/standard.json")
     text = p.read_text()
     first = text.index('"score": ')
-    p.write_text(text[:first] + '"score": NaN' + text[text.index(",", first):])
+    p.write_text(text[:first] + '"score": NaN' + text[text.index(",", first):], newline="\n")
     study.reseal()
     o = code_of(tmp_path, study)
     assert o["code"] == "E_NONFINITE" and o["path"] == f"{R2}/best/standard.json"

@@ -36,16 +36,16 @@ class Repo:
     def __init__(self, root: Path):
         self.root = root
         (root / "python" / "pacman_rl").mkdir(parents=True)
-        (root / "python" / "pacman_rl" / "m.py").write_text("x = 1\n")
+        (root / "python" / "pacman_rl" / "m.py").write_text("x = 1\n", newline="\n")
         (root / "docs" / "prereg").mkdir(parents=True)
         shutil.copy(PR.MATRIX_FILE, root / "docs" / "prereg" / "matrix.csv")
-        (root / "docs" / "PLAN.md").write_text("plan\n")
-        (root / LOCK_REL).write_text(FAKE_LOCK)  # the dependency snapshot is part of the CODE commit C
+        (root / "docs" / "PLAN.md").write_text("plan\n", newline="\n")
+        (root / LOCK_REL).write_text(FAKE_LOCK, newline="\n")  # the dependency snapshot is part of the CODE commit C
         shutil.copy(Path(__file__).resolve().parents[2] / ".gitattributes", root / ".gitattributes")  # the real -text rules
         (root / "python" / "scripts").mkdir(parents=True)
-        (root / "python" / "pacman_rl" / "window_diag.py").write_text("# fake diagnostic definition\n")
-        (root / "python" / "scripts" / "window_diagnostics_summary.py").write_text("# fake diagnostic summary\n")
-        (root / "python" / "scripts" / "prereg_analysis.requirements.txt").write_text("numpy==0.0.0\n")  # the analysis NumPy pin (fake)
+        (root / "python" / "pacman_rl" / "window_diag.py").write_text("# fake diagnostic definition\n", newline="\n")
+        (root / "python" / "scripts" / "window_diagnostics_summary.py").write_text("# fake diagnostic summary\n", newline="\n")
+        (root / "python" / "scripts" / "prereg_analysis.requirements.txt").write_text("numpy==0.0.0\n", newline="\n")  # the analysis NumPy pin (fake)
         self.cfg = json.loads(PR.FREEZE_FILE.read_text())
         self.cfg.update(status="frozen", machine_id="m", worker_count=2, hard_enabled=False)
         self.cfg["to_fill_at_freeze"].update({k: "x" for k in runner.TO_FILL}, power_and_sleep_settings_confirmed=True)
@@ -59,13 +59,13 @@ class Repo:
         return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *a], cwd=self.root, check=True, capture_output=True, text=True).stdout.strip()
 
     def write_cfg(self):
-        (self.root / CFG_REL).write_text(json.dumps(self.cfg, indent=1))
+        (self.root / CFG_REL).write_text(json.dumps(self.cfg, indent=1), newline="\n")
 
     def write_texts(self):
-        (self.root / "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md").write_text("SYNTHETIC FAKE preregistration text\n")
-        (self.root / "docs/prereg/ANALYSIS_SPEC_v0.3.2.md").write_text("SYNTHETIC FAKE analysis specification text\n")
-        (self.root / "docs/prereg/CLAUDE_HANDOFF_v0.3.2.md").write_text("SYNTHETIC FAKE hand-over text\n")
-        (self.root / "docs/prereg/FREEZE_CHECKLIST.md").write_text("SYNTHETIC FAKE checklist\n")
+        (self.root / "docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md").write_text("SYNTHETIC FAKE preregistration text\n", newline="\n")
+        (self.root / "docs/prereg/ANALYSIS_SPEC_v0.3.2.md").write_text("SYNTHETIC FAKE analysis specification text\n", newline="\n")
+        (self.root / "docs/prereg/CLAUDE_HANDOFF_v0.3.2.md").write_text("SYNTHETIC FAKE hand-over text\n", newline="\n")
+        (self.root / "docs/prereg/FREEZE_CHECKLIST.md").write_text("SYNTHETIC FAKE checklist\n", newline="\n")
 
     def fill_hashes(self):
         """The three configuration hashes, then the configuration file (its own hash is computed AFTER this)."""
@@ -82,7 +82,7 @@ class Repo:
                "project_root": ".", "matrix_path": "docs/prereg/matrix.csv", "config_path": CFG_REL, "analysis_script_path": ANALYSIS_REL,
                "dependency_lock_path": LOCK_REL, "frozen_files": {r: sha_of(self.root / r) for r in rels}, "seal_path": "results_prereg/evaluation_seal.json"}
         man.update(over)
-        (self.root / MAN_REL).write_text(json.dumps(man, indent=1, sort_keys=True))
+        (self.root / MAN_REL).write_text(json.dumps(man, indent=1, sort_keys=True), newline="\n")
         return man
 
     def extra_rels(self):
@@ -105,7 +105,7 @@ class Repo:
         """Edit the committed manifest through `fn(dict)` and commit (used for the one-fault-at-a-time fixtures)."""
         man = json.loads((self.root / MAN_REL).read_text())
         fn(man)
-        (self.root / MAN_REL).write_text(json.dumps(man, indent=1, sort_keys=True))
+        (self.root / MAN_REL).write_text(json.dumps(man, indent=1, sort_keys=True), newline="\n")
         self.git("add", "-A")
         self.git("commit", "-qm", "manifest edit")
 
@@ -119,7 +119,7 @@ class Repo:
             self.git("commit", "-qm", "cfg edit")
 
     def commit_file(self, rel, text):
-        (self.root / rel).write_text(text)
+        (self.root / rel).write_text(text, newline="\n")
         self.git("add", "-A")
         self.git("commit", "-qm", f"edit {rel}")
 
@@ -162,7 +162,7 @@ def test_head_equal_to_the_code_commit_is_also_a_valid_state(repo):
 
 
 def test_rejects_a_freeze_commit_that_modifies_python(repo):
-    (repo.root / "python/pacman_rl/m.py").write_text("x = 2\n")  # sneaked into the freeze commit
+    (repo.root / "python/pacman_rl/m.py").write_text("x = 2\n", newline="\n")  # sneaked into the freeze commit
     repo.freeze()
     with pytest.raises(runner.Refused, match="python/ tree at HEAD differs"):
         preflight(repo)
@@ -170,18 +170,18 @@ def test_rejects_a_freeze_commit_that_modifies_python(repo):
 
 def test_rejects_a_dirty_working_tree(repo):
     repo.freeze()
-    (repo.root / "python/pacman_rl/m.py").write_text("x = 3\n")
+    (repo.root / "python/pacman_rl/m.py").write_text("x = 3\n", newline="\n")
     with pytest.raises(runner.Refused, match="uncommitted changes"):
         preflight(repo)
-    (repo.root / "python/pacman_rl/m.py").write_text("x = 1\n")
-    (repo.root / CFG_REL).write_text((repo.root / CFG_REL).read_text() + " ")  # even freeze material must be committed for a formal run
+    (repo.root / "python/pacman_rl/m.py").write_text("x = 1\n", newline="\n")
+    (repo.root / CFG_REL).write_text((repo.root / CFG_REL).read_text() + " ", newline="\n")  # even freeze material must be committed for a formal run
     with pytest.raises(runner.Refused, match="uncommitted changes"):
         preflight(repo)
 
 
 def test_rejects_a_code_commit_that_is_not_an_ancestor_or_does_not_exist(repo):
     repo.git("checkout", "-q", "-b", "other")
-    (repo.root / "python/pacman_rl/m.py").write_text("x = 9\n")
+    (repo.root / "python/pacman_rl/m.py").write_text("x = 9\n", newline="\n")
     repo.git("commit", "-qam", "diverging code")
     other = repo.git("rev-parse", "HEAD")
     repo.git("checkout", "-q", "-")
@@ -199,7 +199,7 @@ def test_rejects_a_code_commit_that_is_not_an_ancestor_or_does_not_exist(repo):
 
 
 def test_rejects_other_files_changed_between_code_and_freeze_commit(repo):
-    (repo.root / "docs/PLAN.md").write_text("changed in the freeze commit\n")
+    (repo.root / "docs/PLAN.md").write_text("changed in the freeze commit\n", newline="\n")
     repo.freeze()
     with pytest.raises(runner.Refused, match="not freeze material"):
         preflight(repo)
@@ -207,7 +207,7 @@ def test_rejects_other_files_changed_between_code_and_freeze_commit(repo):
 
 def test_matrix_change_after_the_code_commit_is_rejected(repo):
     m = repo.root / "docs/prereg/matrix.csv"
-    m.write_text(m.read_text().replace("prereg_res4_n1_s100", "prereg_res4_n1_s100 ", 1))
+    m.write_text(m.read_text().replace("prereg_res4_n1_s100", "prereg_res4_n1_s100 ", 1), newline="\n")
     repo.freeze()
     with pytest.raises(runner.Refused):
         preflight(repo)  # matrix hash differs (and matrix.csv is not freeze material)
@@ -242,10 +242,10 @@ def test_manifest_can_be_prepared_with_uncommitted_freeze_files_and_records_c(re
 
 def test_manifest_refuses_changed_code_or_a_missing_code_commit(repo):
     prepare(repo)
-    (repo.root / "python/pacman_rl/m.py").write_text("x = 5\n")
+    (repo.root / "python/pacman_rl/m.py").write_text("x = 5\n", newline="\n")
     with pytest.raises(seal.ManifestError, match="uncommitted changes"):
         build(repo)
-    (repo.root / "python/pacman_rl/m.py").write_text("x = 1\n")
+    (repo.root / "python/pacman_rl/m.py").write_text("x = 1\n", newline="\n")
     repo.cfg["code_commit"] = None
     repo.write_cfg()
     with pytest.raises(seal.ManifestError, match="40-hex"):
@@ -288,7 +288,7 @@ def write_runs(repo, freeze_commit):
     for r in ROWS:
         d = results / "runs" / r["run_name"]
         d.mkdir(parents=True, exist_ok=True)
-        (d / "run_complete.json").write_text(json.dumps({"freeze_commit": freeze_commit, "code_commit": repo.C}))
+        (d / "run_complete.json").write_text(json.dumps({"freeze_commit": freeze_commit, "code_commit": repo.C}), newline="\n")
     return results
 
 
@@ -307,7 +307,7 @@ def test_final_preflight_accepts_head_equal_to_the_freeze_commit_of_all_runs(rep
 def test_final_preflight_refuses_when_head_moved_after_the_runs(repo):
     F = repo.freeze()
     results = write_runs(repo, F)
-    (repo.root / "docs/prereg/CLAUDE_HANDOFF_v0.3.2.md").write_text("later freeze material\n")
+    (repo.root / "docs/prereg/CLAUDE_HANDOFF_v0.3.2.md").write_text("later freeze material\n", newline="\n")
     repo.git("add", "-A")
     repo.git("commit", "-qm", "later")
     with pytest.raises(runner.Refused, match="HEAD is not the freeze commit"):
@@ -318,7 +318,7 @@ def test_final_preflight_refuses_runs_from_different_or_missing_freeze_commits(r
     F = repo.freeze()
     results = write_runs(repo, F)
     other = results / "runs" / ROWS[1]["run_name"] / "run_complete.json"
-    other.write_text(json.dumps({"freeze_commit": "e" * 40}))
+    other.write_text(json.dumps({"freeze_commit": "e" * 40}), newline="\n")
     with pytest.raises(runner.Refused, match="one freeze commit"):
         final_preflight(repo, results)
     other.unlink()
@@ -329,10 +329,10 @@ def test_final_preflight_refuses_runs_from_different_or_missing_freeze_commits(r
 def test_final_preflight_refuses_dirty_tree_draft_config_and_environment_overrides(repo, monkeypatch):
     F = repo.freeze()
     results = write_runs(repo, F)
-    (repo.root / "python/pacman_rl/m.py").write_text("x = 3\n")
+    (repo.root / "python/pacman_rl/m.py").write_text("x = 3\n", newline="\n")
     with pytest.raises(runner.Refused, match="uncommitted changes"):
         final_preflight(repo, results)
-    (repo.root / "python/pacman_rl/m.py").write_text("x = 1\n")
+    (repo.root / "python/pacman_rl/m.py").write_text("x = 1\n", newline="\n")
     repo.cfg["status"] = "draft"
     with pytest.raises(runner.Refused, match="not 'frozen'"):
         final_preflight(repo, results)

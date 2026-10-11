@@ -336,7 +336,7 @@ def test_E3_nonfinite_numbers(study, tmp_path, literal):
 
     text = re.sub(r'"score": \d+,', f'"score": {literal},', p.read_text(), count=1)
     assert literal in text
-    p.write_text(text)
+    p.write_text(text, newline="\n")
     study.reseal()
     fail(tmp_path, study, "E_NONFINITE")
 
@@ -432,7 +432,7 @@ def test_hash_mismatch_when_a_sealed_file_changes_afterwards(study, tmp_path):
 
 
 def test_frozen_file_changed_after_the_freeze(study, tmp_path):
-    (study.prereg / "requirements.lock").write_text("numpy==9\n")
+    (study.prereg / "requirements.lock").write_text("numpy==9\n", newline="\n")
     fail(tmp_path, study, "E_HASH_MISMATCH")
 
 
@@ -443,7 +443,7 @@ def test_extra_run_directory_and_wrong_matrix(study, tmp_path):
 
 def test_matrix_that_is_not_the_registered_file(study, tmp_path):
     m = study.prereg / "matrix.csv"
-    m.write_text(m.read_text().replace("prereg_res4_n1_s100", "prereg_res4_n1_s100 ", 1))
+    m.write_text(m.read_text().replace("prereg_res4_n1_s100", "prereg_res4_n1_s100 ", 1), newline="\n")
     study.write_manifest_and_seal()
     fail(tmp_path, study, "E_HASH_MISMATCH")
 
@@ -460,14 +460,14 @@ def test_metadata_must_match_run_path_and_summary(study, tmp_path):
 
 def test_json_syntax_duplicate_keys_and_wrong_types(study, tmp_path):
     p = study.path(R0, "last/standard.json")
-    p.write_text(p.read_text()[:100])
+    p.write_text(p.read_text()[:100], newline="\n")
     study.reseal()
     fail(tmp_path, study, "E_JSON_PARSE")
 
 
 def test_duplicate_json_key(study, tmp_path):
     p = study.path(R0, "summary.json")
-    p.write_text(p.read_text().replace('"run_name"', '"actual_updates": 1, "actual_updates"', 1))
+    p.write_text(p.read_text().replace('"run_name"', '"actual_updates": 1, "actual_updates"', 1), newline="\n")
     study.reseal()
     fail(tmp_path, study, "E_JSON_DUPLICATE_KEY")
 
@@ -500,7 +500,7 @@ def test_formal_mode_rejects_a_synthetic_manifest(study, tmp_path):
 def test_relative_project_root_needs_an_explicit_root(study, tmp_path):
     m = json.loads(study.manifest.read_text())
     m["project_root"] = "."
-    study.manifest.write_text(json.dumps(m))
+    study.manifest.write_text(json.dumps(m), newline="\n")
     study.reseal()  # the seal records the manifest hash
     with pytest.raises(A.AnalysisError, match="explicit --project-root"):
         A.analyze(study.manifest, study.runs, tmp_path / "o", "synthetic")
@@ -562,12 +562,12 @@ def test_cli_wrong_container_types_in_an_evaluation_file(study, tmp_path, fn, co
 def test_cli_frozen_files_must_be_an_object_and_path_fields_strings(study, tmp_path):
     m = json.loads(study.manifest.read_text())
     m["frozen_files"] = ["docs/prereg/matrix.csv"]
-    study.manifest.write_text(json.dumps(m))
+    study.manifest.write_text(json.dumps(m), newline="\n")
     rc, obj = cli(study, tmp_path)
     assert rc == 2 and obj["code"] == "E_SCHEMA" and obj["json_path"] == "$.frozen_files"
     m["frozen_files"] = {}
     m["config_path"] = 5
-    study.manifest.write_text(json.dumps(m))
+    study.manifest.write_text(json.dumps(m), newline="\n")
     rc, obj = cli(study, tmp_path)
     assert rc == 2 and obj["code"] == "E_FIELD_TYPE" and obj["json_path"] == "$.config_path"
 
@@ -620,7 +620,7 @@ def test_no_single_key_replacement_or_deletion_escapes_as_an_unwrapped_exception
                     del tt[key]
                 else:
                     tt[key] = action
-                path.write_text(json.dumps(dd))
+                path.write_text(json.dumps(dd), newline="\n")
                 if study.runs in path.parents:
                     study.reseal()  # run files: keep the seal consistent so the fault is reached; manifest / seal faults are tested as they are
                 n += 1
@@ -632,7 +632,7 @@ def test_no_single_key_replacement_or_deletion_escapes_as_an_unwrapped_exception
                     escaped.append(f"{path.name}{prefix}.{key} <- {action!r}: {type(e).__name__}")
                 finally:
                     shutil.rmtree(tmp_path / f"fz{n}", ignore_errors=True)
-        path.write_text(original)
+        path.write_text(original, newline="\n")
         if study.runs in path.parents:
             study.reseal()
     assert n > 150 and not escaped, escaped[:8]
@@ -656,7 +656,7 @@ def test_formal_mode_requires_both_texts_in_the_frozen_hashes(tmp_path):
     st = Study(tmp_path / "p", d=const_d(10, 20, 30), formal=True)
     m = json.loads(st.manifest.read_text())
     del m["frozen_files"]["docs/prereg/ANALYSIS_SPEC_v0.3.2.md"]
-    st.manifest.write_text(json.dumps(m))
+    st.manifest.write_text(json.dumps(m), newline="\n")
     st.reseal()
     with pytest.raises(A.AnalysisError) as e:
         A.analyze(st.manifest, st.runs, tmp_path / "o", "formal")
@@ -665,7 +665,7 @@ def test_formal_mode_requires_both_texts_in_the_frozen_hashes(tmp_path):
     st2 = Study(tmp_path / "q", d=const_d(10, 20, 30))
     m2 = json.loads(st2.manifest.read_text())
     del m2["frozen_files"]["docs/prereg/PREREG_ARCH_NSTEP_v0.3.2.md"]
-    st2.manifest.write_text(json.dumps(m2))
+    st2.manifest.write_text(json.dumps(m2), newline="\n")
     st2.reseal()
     assert A.analyze(st2.manifest, st2.runs, tmp_path / "o2", "synthetic")["complete"] is True
 
@@ -673,7 +673,7 @@ def test_formal_mode_requires_both_texts_in_the_frozen_hashes(tmp_path):
 def test_running_a_different_script_than_the_frozen_one_is_rejected(tmp_path, monkeypatch):
     st = Study(tmp_path / "p", d=const_d(10, 20, 30))
     other = tmp_path / "other_script.py"
-    other.write_text(Path(A.__file__).read_text() + "\n# a modified copy\n")
+    other.write_text(Path(A.__file__).read_text() + "\n# a modified copy\n", newline="\n")
     monkeypatch.setattr(A, "SCRIPT_PATH", other)
     with pytest.raises(A.AnalysisError) as e:
         A.analyze(st.manifest, st.runs, tmp_path / "o", "synthetic")
@@ -685,7 +685,7 @@ def test_a_draft_configuration_cannot_pose_as_formal_or_synthetic(tmp_path):
     cfgp = st.prereg / "frozen_config_v0.3.2.json"
     cfg = json.loads(cfgp.read_text())
     cfg["status"] = "draft"
-    cfgp.write_text(json.dumps(cfg))
+    cfgp.write_text(json.dumps(cfg), newline="\n")
     st.write_manifest_and_seal()  # hashes follow the edit: only the status is wrong
     with pytest.raises(A.AnalysisError) as e:
         A.analyze(st.manifest, st.runs, tmp_path / "o", "formal")
@@ -694,7 +694,7 @@ def test_a_draft_configuration_cannot_pose_as_formal_or_synthetic(tmp_path):
     c2 = st2.prereg / "frozen_config_v0.3.2.json"
     d2 = json.loads(c2.read_text())
     d2["status"] = "frozen"  # a "frozen" configuration is not a synthetic one either
-    c2.write_text(json.dumps(d2))
+    c2.write_text(json.dumps(d2), newline="\n")
     st2.write_manifest_and_seal()
     with pytest.raises(A.AnalysisError) as e2:
         A.analyze(st2.manifest, st2.runs, tmp_path / "o2", "synthetic")

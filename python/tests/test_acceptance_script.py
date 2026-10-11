@@ -14,7 +14,7 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32" or shutil.which("bash") 
 def stub(dir_: Path, name: str, works: bool):
     f = dir_ / name
     log = dir_ / f"{name}.log"
-    f.write_text(f'#!/bin/sh\necho "{name} $@" >> "{log}"\n' + ("exit 0\n" if works else "exit 9\n"))
+    f.write_text(f'#!/bin/sh\necho "{name} $@" >> "{log}"\n' + ("exit 0\n" if works else "exit 9\n"), newline="\n")
     f.chmod(0o755)
     return log
 

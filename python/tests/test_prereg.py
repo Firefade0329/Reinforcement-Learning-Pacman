@@ -181,7 +181,7 @@ def test_finalize_rejects_test_outputs_and_config_drift(two_runs, tmp_path):
     (d / "run_complete.json").unlink()
     shutil.copy(d / "train_config.json", d / "config.json")  # back to what train() wrote, as before finalize
     cfg = PR.train_config(r, FREEZE, **TINY)
-    (d / "test_standard.json").write_text("{}")
+    (d / "test_standard.json").write_text("{}", newline="\n")
     assert any("forbidden" in p for p in runner.finalize(d, r["run_name"], cfg, 1, r["order"]))
     (d / "test_standard.json").unlink()
     assert runner.finalize(d, r["run_name"], cfg, 1, r["order"]) == []
