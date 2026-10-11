@@ -8,6 +8,7 @@ acceptance manual: [`../docs/ACCEPTANCE.md`](../docs/ACCEPTANCE.md), generated r
 ```bash
 pip install -r requirements.txt
 python -m pytest tests -q                       # env fidelity, replay maths, models, reproducibility
+PACMAN_SIMULATE_WINDOWS_TEXT=1 python -m pytest tests -q   # same suite with Windows text-mode newlines (every text write without `newline=` writes CRLF)
 bash scripts/acceptance.sh --quick              # ~5-10 min smoke run
 bash scripts/run_all.sh                         # full reproduction (hours on 4 CPU cores)
 ```
@@ -115,3 +116,9 @@ same checkpoint evaluated on GPU and on CPU gives different per-episode results.
 * n-step checks: `tests/test_nstep_oracle.py` compares the real `collect_step` -> `NStepReplay` -> `td_target` pipeline with an
   independent exact-arithmetic oracle and six planted bugs; `scripts/nstep_oracle_report.py` writes the evidence (reviewer
   fields are left empty for an independent human).
+
+**Newlines.** Files that are hashed, sealed, format-checked or compared byte for byte (run files, manifests, seals, evidence, diagnostic and analysis outputs) are
+written with `newline="\n"` (or as bytes), so their bytes do not depend on the platform; `Path.write_text(newline=...)` needs Python 3.10 or newer. The single
+exception is `bootstrap_replicates.csv`, whose row terminator is the csv module's fixed `\r\n` on every platform. `tests/test_text_write_discipline.py` rejects a
+text write without `newline=` in any source file (a short list of non-hashed reports is exempt, with reasons), and `tests/test_lf_bytes.py` runs every producer under a
+CRLF simulation and checks its bytes. Tests that create files which are later hashed must do the same (or use `write_bytes`).
