@@ -70,7 +70,7 @@ Interaction c = d.res8 - d.cnn2: mean +45.77, sd 48.26, 95 % t [-14.16, 105.69],
 
 The repository `main` may move beyond the freeze commit; the runs, the evaluation and the analysis were made at the freeze commit, and `docs/prereg/freeze_manifest.json` there lists the SHA-256 of every frozen file.
 
-## 8. Figures (descriptive)
+## 9. Figures (descriptive)
 
 Figures made from the official outputs of the frozen run. They add no analysis and are subject to the wording limits of sections 5 and 6. Source script and notes: `docs/figures/`.
 
