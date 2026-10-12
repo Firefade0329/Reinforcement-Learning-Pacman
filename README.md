@@ -38,6 +38,9 @@ repository before any formal run; the 30 runs were made once, the test set was o
 * **H2 uncertain**: the difference of the n-step effect between res8 and cnn2 is +45.77 with a 97.5 % interval of
   [-29.68, 121.21]; with five seeds the data cannot say whether the effect depends on the architecture.
 
+![Paired training seeds, n=1 vs n=3](docs/figures/fig1_paired_seeds.png)
+More figures and captions: [docs/PREREG_RESULTS.md](docs/PREREG_RESULTS.md#8-figures-descriptive)
+
 **What this does not show.** It is not a general statement that one-step returns beat three-step returns, nor that deeper
 networks are better: one map, five training seeds, a privileged BFS distance-field input, a fixed 300,000-step budget and
 unequal compute at equal budget. "Uncertain" is not "no interaction". Neither exploration strength nor off-policy

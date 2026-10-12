@@ -69,3 +69,27 @@ Interaction c = d.res8 - d.cnn2: mean +45.77, sd 48.26, 95 % t [-14.16, 105.69],
 | analysis script | `python/scripts/prereg_analysis.py` at the freeze commit (SHA-256 `28484e4966e6ad579fdf095d53e7ba9dac9a406279c5c5067c3395b1bdb29d35`) |
 
 The repository `main` may move beyond the freeze commit; the runs, the evaluation and the analysis were made at the freeze commit, and `docs/prereg/freeze_manifest.json` there lists the SHA-256 of every frozen file.
+
+## 8. Figures (descriptive)
+
+Figures made from the official outputs of the frozen run. They add no analysis and are subject to the wording limits of sections 5 and 6. Source script and notes: `docs/figures/`.
+
+![Paired training seeds, n=1 vs n=3](figures/fig1_paired_seeds.png)
+
+Figure 1. The five paired training seeds for each architecture: score with n=1 and with n=3 (last checkpoint, standard scenario, 300 sealed test episodes per run). Grey lines join runs with the same seed; black is the five-seed mean.
+
+![Effects with intervals](figures/fig2_effects.png)
+
+Figure 2. The effect d = n=1 minus n=3 for each architecture and the interaction c = d.res8 - d.cnn2, with 97.5 % and 95 % t intervals; dashed lines mark +/-10. The H1 and H2 labels are those of section 3.
+
+![Validation score during training](figures/fig3_validation_curves.png)
+
+Figure 3. Validation score during training (50 validation episodes every 20,000 transitions; line = mean of five seeds, band = min-max). These are validation seeds, not the test set.
+
+![B1 window statistic against epsilon arithmetic](figures/fig4_b1_epsilon_arithmetic.png)
+
+Figure 4. Fraction of windows with at least two actions that contain a later action different from the acting network's argmax, by collection time, for the three n=3 configurations, against 1 - (1 - 0.8 x epsilon)^2, the value that epsilon-greedy exploration alone implies for two later actions. The close agreement is arithmetic, not evidence for a mechanism (section 5).
+
+![Death rates](figures/fig5_death_rates.png)
+
+Figure 5. Share of the 300 test episodes that ended in death, per configuration (bars: mean of five runs; dots: single runs).
